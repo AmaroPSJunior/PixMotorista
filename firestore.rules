@@ -1,0 +1,27 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /driver_profiles/{document=**} {
+      allow read, write: if true;
+    }
+    match /services/{document=**} {
+      allow read, write: if true;
+    }
+    match /spotify_sessions/{document=**} {
+      allow read, write: if true;
+    }
+    match /pix_payments/{document=**} {
+      allow read, write: if true;
+    }
+    match /passenger_sessions/{document=**} {
+      allow read, write: if true;
+    }
+    match /session_settings/{document=**} {
+      allow read, write: if true;
+    }
+    match /mercadopago_config/{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+

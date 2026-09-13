@@ -1,0 +1,158 @@
+{
+  "entities": {
+    "driverProfile": {
+      "title": "Driver Profile",
+      "description": "Profile configuration for the driver including Pix key, car info and photos.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "carModel": { "type": "string" },
+        "carColor": { "type": "string" },
+        "licensePlate": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "pixKey": { "type": "string" },
+        "pixKeyType": { "type": "string" },
+        "randomPixKey": { "type": "string" },
+        "customQrCodeUrl": { "type": "string" },
+        "customPublicUrl": { "type": "string" },
+        "receiverName": { "type": "string" },
+        "city": { "type": "string" },
+        "greetingMessage": { "type": "string" },
+        "googleEmail": { "type": "string" },
+        "googleAuthenticated": { "type": "boolean" },
+        "showEmailKey": { "type": "boolean" },
+        "showRandomKey": { "type": "boolean" },
+        "showCopyPasteCode": { "type": "boolean" },
+        "showQrCode": { "type": "boolean" },
+        "useCustomQrCodeImage": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name", "pixKey", "pixKeyType", "receiverName"]
+    },
+    "service": {
+      "title": "Additional Service",
+      "description": "Additional services provided by the driver.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "iconName": { "type": "string" },
+        "itemType": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "isPopular": { "type": "boolean" },
+        "category": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "title", "price", "category"]
+    },
+    "spotifySession": {
+      "title": "Spotify Session",
+      "description": "Persisted Spotify OAuth credentials for the driver.",
+      "type": "object",
+      "properties": {
+        "accessToken": { "type": "string" },
+        "refreshToken": { "type": "string" },
+        "expiresAt": { "type": "number" },
+        "userProfile": { "type": "object" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "pixPayment": {
+      "title": "Mercado Pago Pix Payment",
+      "description": "Pix payment transaction generated via Mercado Pago SDK",
+      "type": "object",
+      "properties": {
+        "paymentId": { "type": "string" },
+        "amount": { "type": "number" },
+        "description": { "type": "string" },
+        "status": { "type": "string" },
+        "statusDetail": { "type": "string" },
+        "qrCode": { "type": "string" },
+        "qrCodeBase64": { "type": "string" },
+        "ticketUrl": { "type": "string" },
+        "payerEmail": { "type": "string" },
+        "payerCpf": { "type": "string" },
+        "serviceId": { "type": "string" },
+        "rideId": { "type": "string" },
+        "paymentActivated": { "type": "boolean" },
+        "activatedAt": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["paymentId", "amount", "status"]
+    },
+    "passengerSession": {
+      "title": "Passenger Session",
+      "description": "Active or historical passenger session on the vehicle",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "passengerName": { "type": "string" },
+        "browserId": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "lastActiveAt": { "type": "string" },
+        "status": { "type": "string" },
+        "unlockedServices": { "type": "array" },
+        "hasMusicUnlocked": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "passengerName", "browserId", "status"]
+    },
+    "sessionSettings": {
+      "title": "Session Settings",
+      "description": "Driver session settings for expiration and multi-passenger mode",
+      "type": "object",
+      "properties": {
+        "autoExpireMinutes": { "type": "number" },
+        "allowMultiPassengerMode": { "type": "boolean" },
+        "defaultSingleSession": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "mercadopagoConfig": {
+      "title": "Mercado Pago Config",
+      "description": "Driver Mercado Pago access token and configuration",
+      "type": "object",
+      "properties": {
+        "accessToken": { "type": "string" },
+        "publicKey": { "type": "string" },
+        "useRealPixInDev": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "collections": {
+      "driver_profiles": {
+        "entity": "driverProfile",
+        "description": "Driver profile configurations"
+      },
+      "services": {
+        "entity": "service",
+        "description": "Catalog of services offered by driver"
+      },
+      "spotify_sessions": {
+        "entity": "spotifySession",
+        "description": "Driver Spotify OAuth tokens and session data"
+      },
+      "pix_payments": {
+        "entity": "pixPayment",
+        "description": "Mercado Pago Pix payments and real-time webhook status"
+      },
+      "passenger_sessions": {
+        "entity": "passengerSession",
+        "description": "Passenger active and historic sessions"
+      },
+      "session_settings": {
+        "entity": "sessionSettings",
+        "description": "Driver global session configurations"
+      },
+      "mercadopago_config": {
+        "entity": "mercadopagoConfig",
+        "description": "Driver Mercado Pago API credentials"
+      }
+    }
+  }
+}

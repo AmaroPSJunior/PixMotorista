@@ -1,0 +1,6 @@
+{
+  "name": "Pagamento Pix Motorista",
+  "description": "Página de pagamento Pix leve e funcional para motoristas de aplicativo com chave e-mail, QR Code e tabela de serviços adicionais.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
