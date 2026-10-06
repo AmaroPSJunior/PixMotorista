@@ -37,6 +37,7 @@ import { isDevEnvironment, getEffectiveDriverEmail, DEFAULT_DRIVER_EMAIL } from 
 import { AuthenticatedDriver, ensurePassengerAuth, signOutDriver, subscribeDriverAuth } from './lib/auth';
 import { DriverApp } from './views/DriverApp';
 import { PassengerApp } from './views/PassengerApp';
+import { DriverRidePanel } from './components/DriverRidePanel';
 import { useRideSession } from './state/useRideSession';
 import { normalizeServiceId, normalizeServiceIds, SERVICE_IDS } from './domain/serviceIds';
 
@@ -456,6 +457,69 @@ export default function App() {
     }
   };
 
+
+  const handleStartRide = async (price: number) => {
+    const existingActive = passengerSessions.find((session) => session.status === 'active');
+    if (existingActive) {
+      setActiveSessionId(existingActive.id);
+      if (price > 0) {
+        setRidePrice(price);
+        await savePassengerSession({ ...existingActive, ridePrice: price });
+      }
+      return;
+    }
+
+    const sessionId = `ride_${Date.now()}`;
+    const nowIso = new Date().toISOString();
+    const newSession: PassengerSession = {
+      id: sessionId,
+      passengerName: 'Aguardando passageiro',
+      browserId: '',
+      createdAt: nowIso,
+      lastActiveAt: nowIso,
+      status: 'active',
+      unlockedServices: normalizeServiceIds(sessionSettings.defaultUnlockedServices || []),
+      hasMusicUnlocked: normalizeServiceIds(
+        sessionSettings.defaultUnlockedServices || []
+      ).includes(SERVICE_IDS.MUSIC),
+      ridePrice: price,
+      driverEmail: getEffectiveDriverEmail(driver.googleEmail),
+      authUid: driver.authUid,
+    };
+
+    await savePassengerSession(newSession);
+    setActiveSessionId(sessionId);
+    setRidePrice(price);
+    setLocalRidePaidState(false);
+    setLocalPaidRideAmount(0);
+    setSelectedServiceIds([]);
+    setProductQuantities({});
+    setSelectedTip(0);
+  };
+
+  const handleEndRide = async () => {
+    const target =
+      currentPassengerSession ||
+      passengerSessions.find((session) => session.id === activeSessionId) ||
+      passengerSessions.find((session) => session.status === 'active');
+
+    if (target) {
+      await savePassengerSession({
+        ...target,
+        status: 'closed',
+        lastActiveAt: new Date().toISOString(),
+      });
+    }
+
+    setActiveSessionId(null);
+    setRidePrice(0);
+    setLocalRidePaidState(false);
+    setLocalPaidRideAmount(0);
+    setSelectedServiceIds([]);
+    setProductQuantities({});
+    setSelectedTip(0);
+  };
+
   // Calculate sum of selected services and products
   const selectedServicesTotal = services.reduce((acc, curr) => {
     const isProd = getItemType(curr) === 'produto';
@@ -767,6 +831,19 @@ export default function App() {
               </div>
             )}
           </>
+        )}
+
+        {viewMode === 'driver' && (
+          <DriverRidePanel
+            activeSession={
+              passengerSessions.find((session) => session.id === activeSessionId) ||
+              passengerSessions.find((session) => session.status === 'active')
+            }
+            ridePrice={ridePrice}
+            isRidePaid={isRidePaid}
+            onStartRide={handleStartRide}
+            onEndRide={handleEndRide}
+          />
         )}
 
         {/* Central Passenger Session Management System */}
