@@ -39,6 +39,7 @@ import { AuthenticatedDriver, ensurePassengerAuth, signOutDriver, subscribeDrive
 import { DriverApp } from './views/DriverApp';
 import { PassengerApp } from './views/PassengerApp';
 import { useRideSession } from './state/useRideSession';
+import { normalizeServiceId, normalizeServiceIds, SERVICE_IDS } from './domain/serviceIds';
 
 export default function App() {
   const isDevEnv = isDevEnvironment();
@@ -249,27 +250,13 @@ export default function App() {
     ? Array.from(new Set([...defaultUnlocked, ...currentPassengerSession.unlockedServices]))
     : Array.from(new Set([...defaultUnlocked, ...localUnlockedServices]));
 
-  const rawSet = new Set(currentSessionUnlocked);
-  if (rawSet.has('spotify_music') || rawSet.has('2')) {
-    rawSet.add('spotify_music');
-    rawSet.add('2');
-  }
-  if (rawSet.has('wifi') || rawSet.has('1')) {
-    rawSet.add('wifi');
-    rawSet.add('1');
-  }
-  if (rawSet.has('charger') || rawSet.has('3')) {
-    rawSet.add('charger');
-    rawSet.add('3');
-  }
-  const allUnlockedServicesList = Array.from(rawSet);
+  const allUnlockedServicesList = normalizeServiceIds(currentSessionUnlocked);
 
   const passengerHasMusicUnlocked = Boolean(
     currentPassengerSession
-      ? (currentPassengerSession.unlockedServices.includes('spotify_music') ||
-         currentPassengerSession.unlockedServices.includes('2') ||
-         currentPassengerSession.hasMusicUnlocked)
-      : (localUnlockedServices.includes('spotify_music') || localUnlockedServices.includes('2'))
+      ? currentPassengerSession.unlockedServices.includes(SERVICE_IDS.MUSIC) ||
+        currentPassengerSession.hasMusicUnlocked
+      : localUnlockedServices.includes(SERVICE_IDS.MUSIC)
   );
 
   const effectiveMusicUnlocked =
@@ -277,9 +264,8 @@ export default function App() {
 
   const passengerHasWifiUnlocked = Boolean(
     currentPassengerSession
-      ? (currentPassengerSession.unlockedServices.includes('wifi') ||
-         currentPassengerSession.unlockedServices.includes('1'))
-      : (localUnlockedServices.includes('wifi') || localUnlockedServices.includes('1'))
+      ? currentPassengerSession.unlockedServices.includes(SERVICE_IDS.WIFI)
+      : localUnlockedServices.includes(SERVICE_IDS.WIFI)
   );
 
   const effectiveWifiUnlocked =
@@ -345,53 +331,26 @@ export default function App() {
 
   // Toggle service selection or unlock state
   const handleToggleService = (serviceId: string) => {
-    const isMusic = serviceId === 'spotify_music' || serviceId === '2';
-    const isWifi = serviceId === 'wifi' || serviceId === '1';
-    const isCharger = serviceId === 'charger' || serviceId === '3';
+    const canonicalId = normalizeServiceId(serviceId);
+    const isCurrentlyUnlocked = allUnlockedServicesList.includes(canonicalId);
 
-    const isCurrentlyUnlocked =
-      allUnlockedServicesList.includes(serviceId) ||
-      (isMusic && (allUnlockedServicesList.includes('spotify_music') || allUnlockedServicesList.includes('2'))) ||
-      (isWifi && (allUnlockedServicesList.includes('wifi') || allUnlockedServicesList.includes('1'))) ||
-      (isCharger && (allUnlockedServicesList.includes('charger') || allUnlockedServicesList.includes('3')));
-
-    // In passenger view:
-    // If the service is already unlocked/paid, passenger CANNOT disable it.
-    // If NOT unlocked, passenger toggles selection ONLY to calculate total payment (DO NOT unlock!)
     if (viewMode === 'passenger') {
-      if (isCurrentlyUnlocked) {
-        return;
-      }
-      setSelectedServiceIds((prev) =>
-        prev.includes(serviceId)
-          ? prev.filter((id) => id !== serviceId)
-          : [...prev, serviceId]
-      );
+      if (isCurrentlyUnlocked) return;
+      setSelectedServiceIds((prev) => {
+        const normalized = normalizeServiceIds(prev);
+        return normalized.includes(canonicalId)
+          ? normalized.filter((id) => id !== canonicalId)
+          : [...normalized, canonicalId];
+      });
       return;
     }
 
-    // In driver view:
-    // Driver HAS administrative override powers to toggle unlock/lock in Firestore for ALL active sessions
     const activeSessions = passengerSessions.filter((s) => s.status === 'active');
     const nextState = !isCurrentlyUnlocked;
-
-    const defaultList = sessionSettings.defaultUnlockedServices || [];
-    const keysToToggle = isMusic
-      ? ['spotify_music', '2']
-      : isWifi
-      ? ['wifi', '1']
-      : isCharger
-      ? ['charger', '3']
-      : [serviceId];
-
-    let updatedDefault = [...defaultList];
-    if (nextState) {
-      keysToToggle.forEach((k) => {
-        if (!updatedDefault.includes(k)) updatedDefault.push(k);
-      });
-    } else {
-      updatedDefault = updatedDefault.filter((k) => !keysToToggle.includes(k));
-    }
+    const defaultList = normalizeServiceIds(sessionSettings.defaultUnlockedServices || []);
+    const updatedDefault = nextState
+      ? normalizeServiceIds([...defaultList, canonicalId])
+      : defaultList.filter((id) => id !== canonicalId);
 
     saveSessionSettings({
       ...sessionSettings,
@@ -400,11 +359,17 @@ export default function App() {
 
     if (activeSessions.length > 0) {
       activeSessions.forEach((sess) => {
-        toggleSessionServiceUnlock(sess.id, serviceId, sess.unlockedServices, nextState);
+        toggleSessionServiceUnlock(
+          sess.id,
+          canonicalId,
+          sess.unlockedServices,
+          nextState
+        );
       });
     } else {
-      // Create new active session if none exists
-      const newSessionId = registeredSessionId || `sess_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const newSessionId =
+        registeredSessionId ||
+        `sess_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
       const newSession: PassengerSession = {
         id: newSessionId,
         passengerName: registeredName || 'Passageiro',
@@ -413,7 +378,8 @@ export default function App() {
         lastActiveAt: new Date().toISOString(),
         status: 'active',
         unlockedServices: updatedDefault,
-        hasMusicUnlocked: isMusic,
+        hasMusicUnlocked: updatedDefault.includes(SERVICE_IDS.MUSIC),
+        authUid: driver.authUid,
       };
       savePassengerSession(newSession);
     }
@@ -488,22 +454,20 @@ export default function App() {
       desc.includes('wi-fi') ||
       desc.includes('wifi') ||
       desc.includes('internet') ||
-      payment.serviceId === '1' ||
-      payment.serviceId === 'wifi';
+      normalizeServiceId(payment.serviceId || '') === SERVICE_IDS.WIFI;
 
     const isMusicPayment =
       desc.includes('música') ||
       desc.includes('spotify') ||
       desc.includes('som') ||
-      payment.serviceId === '2' ||
-      payment.serviceId === 'spotify_music';
+      normalizeServiceId(payment.serviceId || '') === SERVICE_IDS.MUSIC;
 
     if (isWifiPayment) {
-      servicesToUnlock.push('wifi', '1');
+      servicesToUnlock.push(SERVICE_IDS.WIFI);
     }
 
     if (isMusicPayment) {
-      servicesToUnlock.push('spotify_music', '2');
+      servicesToUnlock.push(SERVICE_IDS.MUSIC);
     }
 
     // Separate selected items into Services (unlockable) vs Products (purchasable by quantity)
@@ -514,14 +478,12 @@ export default function App() {
           const qty = productQuantities[id] || 1;
           productsToPurchase[id] = (productsToPurchase[id] || 0) + qty;
         } else {
-          servicesToUnlock.push(id);
-          if (id === 'wifi' || id === '1') servicesToUnlock.push('wifi', '1');
-          if (id === 'spotify_music' || id === '2') servicesToUnlock.push('spotify_music', '2');
+          servicesToUnlock.push(normalizeServiceId(id));
         }
       });
     }
 
-    const uniqueServicesToUnlock = Array.from(new Set(servicesToUnlock));
+    const uniqueServicesToUnlock = normalizeServiceIds(servicesToUnlock);
 
     let targetSession = currentPassengerSession || passengerSessions.find((s) => s.id === activeSessionId);
 
@@ -564,8 +526,7 @@ export default function App() {
           status: 'active',
           unlockedServices: uniqueServicesToUnlock,
           purchasedProducts: productsToPurchase,
-          hasMusicUnlocked:
-            uniqueServicesToUnlock.includes('spotify_music') || uniqueServicesToUnlock.includes('2'),
+          hasMusicUnlocked: uniqueServicesToUnlock.includes(SERVICE_IDS.MUSIC),
           paidAmount: payment.amount || 0,
           paymentId: payment.paymentId || '',
           authUid,
