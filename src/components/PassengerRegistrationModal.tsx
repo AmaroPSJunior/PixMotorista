@@ -3,6 +3,7 @@ import { UserCheck, Zap, Loader2 } from 'lucide-react';
 import { PassengerSession, SessionSettings } from '../types';
 import { getOrCreateBrowserId } from '../utils/browserId';
 import { savePassengerSession, closeAllPreviousPassengerSessionsExcept } from '../lib/firebase';
+import { ensurePassengerAuth } from '../lib/auth';
 
 interface PassengerRegistrationModalProps {
   isOpen: boolean;
@@ -34,6 +35,7 @@ export const PassengerRegistrationModal: React.FC<PassengerRegistrationModalProp
 
     setIsSubmitting(true);
     try {
+      const authUid = await ensurePassengerAuth();
       const newSessionId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const nowIso = new Date().toISOString();
 
@@ -47,6 +49,7 @@ export const PassengerRegistrationModal: React.FC<PassengerRegistrationModalProp
         unlockedServices: [],
         hasMusicUnlocked: false,
         driverEmail: driverEmail || '',
+        authUid,
       };
 
       // Store local passenger identification for strict session validation
