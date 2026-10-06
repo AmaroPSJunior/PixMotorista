@@ -1381,19 +1381,9 @@ app.post('/api/spotify/transfer', async (req, res) => {
 // In-memory payment cache for immediate fast lookups & Firestore sync
 const paymentStore: Record<string, any> = {};
 
-// Helper to resolve Mercado Pago Access Token from Firestore or .env
+// Mercado Pago credentials are server-side secrets only.
+// Never load access tokens from Firestore or return them to the browser.
 async function getMercadoPagoToken(): Promise<string> {
-  if (db) {
-    try {
-      const docRef = doc(db, 'mercadopago_config', 'main_config');
-      const snap = await getDoc(docRef);
-      if (snap.exists() && snap.data().accessToken) {
-        return String(snap.data().accessToken).trim();
-      }
-    } catch (e) {
-      console.warn('Aviso ao consultar token do Mercado Pago no Firestore:', e);
-    }
-  }
   return (process.env.MERCADO_PAGO_ACCESS_TOKEN || '').trim();
 }
 
@@ -1426,30 +1416,15 @@ app.get('/api/mercadopago/status', async (req, res) => {
     hasPublicKey: Boolean(publicKey),
     webhookUrl: `${appUrl}/api/mercadopago/webhook`,
     mode,
-    maskedToken: token ? `${token.slice(0, 10)}...${token.slice(-4)}` : null,
   });
 });
 
-// Save Mercado Pago Config via Driver UI
-app.post('/api/mercadopago/save-config', async (req, res) => {
-  try {
-    const { accessToken, publicKey, useRealPixInDev } = req.body || {};
-    const configData = {
-      accessToken: String(accessToken || '').trim(),
-      publicKey: String(publicKey || '').trim(),
-      useRealPixInDev: useRealPixInDev !== false,
-      updatedAt: new Date().toISOString(),
-    };
-
-    if (db) {
-      const docRef = doc(db, 'mercadopago_config', 'main_config');
-      await setDoc(docRef, configData, { merge: true });
-    }
-
-    res.json({ success: true, config: configData });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Erro ao salvar configurações do Mercado Pago.' });
-  }
+// Mercado Pago secrets must be configured in the server environment.
+// This endpoint intentionally refuses browser-side secret persistence.
+app.post('/api/mercadopago/save-config', (_req, res) => {
+  return res.status(410).json({
+    error: 'Credenciais do Mercado Pago devem ser configuradas no ambiente seguro do servidor.',
+  });
 });
 
 // 2. Create Mercado Pago Pix Payment Charge
@@ -1521,21 +1496,21 @@ app.post('/api/mercadopago/create-payment', async (req, res) => {
           updatedAt: new Date().toISOString(),
         };
       } catch (sdkError: any) {
-        console.warn('⚠️ Erro de autorização/API no Mercado Pago SDK:', sdkError.message || sdkError);
+        console.warn('Erro na API do Mercado Pago:', sdkError?.message || 'falha desconhecida');
 
-        // Fallback to demonstration mode so the user experience is uninterrupted
+        if (process.env.NODE_ENV === 'production') {
+          return res.status(502).json({
+            error: 'Não foi possível gerar a cobrança Pix no Mercado Pago. Tente novamente.',
+          });
+        }
+
         const simId = 'MP_SIM_' + Date.now();
         const mockPixCopiaECola = `00020126580014br.gov.bcb.pix0136${simId}5204000053039865405${finalAmount.toFixed(2)}5802BR5920MOTO_TAXI_PAGAMENTOS6009SAO_PAULO62070503***63041D2B`;
-
         let qrBase64 = '';
         try {
           qrBase64 = await QRCode.toDataURL(mockPixCopiaECola);
           qrBase64 = qrBase64.replace(/^data:image\/png;base64,/, '');
-        } catch (e) {
-          console.warn('Erro ao gerar QRCode fallback:', e);
-        }
-
-        const errDetail = sdkError.message || (typeof sdkError === 'object' ? JSON.stringify(sdkError) : String(sdkError));
+        } catch {}
 
         paymentData = {
           paymentId: simId,
@@ -1550,26 +1525,26 @@ app.post('/api/mercadopago/create-payment', async (req, res) => {
           serviceId: serviceId || '',
           rideId: rideId || '',
           isRealMercadoPago: false,
-          authError: true,
-          apiErrorDetail: errDetail,
           paymentActivated: false,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          message: `Aviso de Credenciais: O Access Token configurado no servidor retornou um aviso da API (${errDetail}). O QR Code foi gerado no Modo Demonstrativo para garantir o teste da aplicação. Nota: O Mercado Pago exige que a conta do pagador seja diferente da conta recebedora para criar Pix real.`,
+          message: 'Modo demonstrativo disponível apenas fora de produção.',
         };
       }
     } else {
-      // Fallback / Demonstration mode when MERCADO_PAGO_ACCESS_TOKEN is not yet set
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(503).json({
+          error: 'Pagamento Pix indisponível: Mercado Pago não configurado no servidor.',
+        });
+      }
+
       const simId = 'MP_SIM_' + Date.now();
       const mockPixCopiaECola = `00020126580014br.gov.bcb.pix0136${simId}5204000053039865405${finalAmount.toFixed(2)}5802BR5920MOTO_TAXI_PAGAMENTOS6009SAO_PAULO62070503***63041D2B`;
-
       let qrBase64 = '';
       try {
         qrBase64 = await QRCode.toDataURL(mockPixCopiaECola);
         qrBase64 = qrBase64.replace(/^data:image\/png;base64,/, '');
-      } catch (e) {
-        console.warn('Erro ao gerar QRCode fallback:', e);
-      }
+      } catch {}
 
       paymentData = {
         paymentId: simId,
@@ -1587,7 +1562,7 @@ app.post('/api/mercadopago/create-payment', async (req, res) => {
         paymentActivated: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        message: 'Aviso: MERCADO_PAGO_ACCESS_TOKEN não está configurado no servidor. Gerado QR Code Pix demonstrativo.',
+        message: 'Modo demonstrativo disponível apenas fora de produção.',
       };
     }
 
@@ -1748,6 +1723,10 @@ app.get('/api/mercadopago/payment-status/:id', async (req, res) => {
 
 // 5. Test Endpoint to Simulate Webhook Activation
 app.post('/api/mercadopago/test-webhook', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Endpoint indisponível.' });
+  }
+
   const { paymentId, status = 'approved' } = req.body || {};
   if (!paymentId) return res.status(400).json({ error: 'paymentId é obrigatório.' });
 
