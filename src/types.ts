@@ -1,3 +1,5 @@
+import { normalizeServiceId } from './domain/serviceIds';
+
 export interface DraggableItemPosition {
   x: number;
   y: number;
@@ -110,20 +112,19 @@ export const getItemType = (service: { id: string; title: string; iconName: stri
   if (service.itemType) return service.itemType;
   if (service.type) return service.type;
   if (service.category === 'servico' || service.category === 'produto') return service.category as 'servico' | 'produto';
+
+  const id = normalizeServiceId(service.id);
   const isService =
-    service.id === 'wifi' ||
-    service.id === '1' ||
-    service.id === 'spotify_music' ||
-    service.id === '2' ||
-    service.id === 'charger' ||
-    service.id === '3' ||
+    id === 'wifi' ||
+    id === 'spotify_music' ||
+    id === 'charger' ||
     (service.iconName && service.iconName.toLowerCase() === 'wifi') ||
     (service.iconName && service.iconName.toLowerCase() === 'music') ||
     (service.iconName && service.iconName.toLowerCase() === 'zap') ||
     service.title.toLowerCase().includes('wifi') ||
     service.title.toLowerCase().includes('carregador') ||
     service.title.toLowerCase().includes('música');
-  if (isService) return 'servico';
-  return 'produto';
+
+  return isService ? 'servico' : 'produto';
 };
 
