@@ -23,6 +23,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { AdditionalService } from '../types';
+import { normalizeServiceId } from '../domain/serviceIds';
 
 interface ServicesListProps {
   services: AdditionalService[];
