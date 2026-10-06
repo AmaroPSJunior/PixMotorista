@@ -35,7 +35,7 @@ import {
 } from './lib/firebase';
 
 import { isDevEnvironment, getEffectiveDriverEmail, DEFAULT_DRIVER_EMAIL } from './utils/urlHelper';
-import { AuthenticatedDriver, signOutDriver, subscribeDriverAuth } from './lib/auth';
+import { AuthenticatedDriver, ensurePassengerAuth, signOutDriver, subscribeDriverAuth } from './lib/auth';
 
 export default function App() {
   const isDevEnv = isDevEnvironment();
@@ -131,6 +131,7 @@ export default function App() {
   const [passengerSessions, setPassengerSessions] = useState<PassengerSession[]>([]);
   const [sessionSettings, setSessionSettings] = useState<SessionSettings>(DEFAULT_SESSION_SETTINGS);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [passengerAuthUid, setPassengerAuthUid] = useState<string | null>(null);
 
   const [viewMode, setViewMode] = useState<'driver' | 'passenger'>(() => {
     if (isDevEnv) {
@@ -142,6 +143,29 @@ export default function App() {
     }
     return 'passenger';
   });
+
+  // Passengers use Firebase Anonymous Auth so Firestore can enforce per-session ownership
+  // without asking the passenger to create an account.
+  useEffect(() => {
+    if (viewMode !== 'passenger' || isGoogleAuthenticated) {
+      setPassengerAuthUid(null);
+      return;
+    }
+
+    let active = true;
+    ensurePassengerAuth()
+      .then((uid) => {
+        if (active) setPassengerAuthUid(uid);
+      })
+      .catch((error) => {
+        console.warn('Não foi possível iniciar a sessão segura do passageiro:', error);
+        if (active) setPassengerAuthUid(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [viewMode, isGoogleAuthenticated]);
 
   // Real-time synchronization with Firebase Firestore
   useEffect(() => {
@@ -156,9 +180,15 @@ export default function App() {
       setServices(servicesList);
     });
 
-    const unsubSessions = subscribePassengerSessions((sessionsList) => {
-      setPassengerSessions(sessionsList);
-    });
+    const unsubSessions = subscribePassengerSessions(
+      (sessionsList) => {
+        setPassengerSessions(sessionsList);
+      },
+      {
+        driverMode: viewMode === 'driver' && isGoogleAuthenticated,
+        authUid: passengerAuthUid,
+      }
+    );
 
     const unsubSettings = subscribeSessionSettings((settings) => {
       setSessionSettings(settings);
@@ -170,7 +200,7 @@ export default function App() {
       unsubSessions();
       unsubSettings();
     };
-  }, [driver.googleEmail, isGoogleAuthenticated]);
+  }, [driver.googleEmail, isGoogleAuthenticated, viewMode, passengerAuthUid]);
 
   // Restore the authenticated driver from Firebase Auth, never from localStorage.
   useEffect(() => {
@@ -493,7 +523,7 @@ export default function App() {
   };
 
   // Requirement 1 & 2: Unlock services (Wi-Fi, Spotify, etc.) and record purchased products on payment
-  const handlePaymentSuccess = (payment: MercadoPagoPayment) => {
+  const handlePaymentSuccess = async (payment: MercadoPagoPayment) => {
     playPaymentSuccessSound();
 
     const servicesToUnlock: string[] = [];
@@ -569,6 +599,7 @@ export default function App() {
         });
       } else {
         // Create new session in Firestore if no active session exists
+        const authUid = await ensurePassengerAuth();
         const newSessionId = registeredSessionId || `sess_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
         const newSession: PassengerSession = {
           id: newSessionId,
@@ -583,6 +614,7 @@ export default function App() {
             uniqueServicesToUnlock.includes('spotify_music') || uniqueServicesToUnlock.includes('2'),
           paidAmount: payment.amount || 0,
           paymentId: payment.paymentId || '',
+          authUid,
         };
         savePassengerSession(newSession);
         try {
