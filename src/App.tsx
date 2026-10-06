@@ -36,6 +36,8 @@ import {
 
 import { isDevEnvironment, getEffectiveDriverEmail, DEFAULT_DRIVER_EMAIL } from './utils/urlHelper';
 import { AuthenticatedDriver, ensurePassengerAuth, signOutDriver, subscribeDriverAuth } from './lib/auth';
+import { DriverApp } from './views/DriverApp';
+import { PassengerApp } from './views/PassengerApp';
 
 export default function App() {
   const isDevEnv = isDevEnvironment();
@@ -759,19 +761,23 @@ export default function App() {
     }
   };
 
+  const ExperienceApp = viewMode === 'driver' ? DriverApp : PassengerApp;
+
   return (
-    <div className="min-h-screen bg-slate-100/90 text-slate-800 font-sans pb-24 antialiased">
-      {/* Driver / Passenger Header Card */}
-      <Header
-        driver={driver}
-        passengerName={displayPassengerName}
-        onOpenEditModal={handleOpenEditModal}
-        onOpenMercadoPagoModal={() => setIsMercadoPagoSettingsModalOpen(true)}
-        viewMode={viewMode}
-        onToggleViewMode={handleToggleViewMode}
-        isDevEnv={isDevEnv}
-        onGoogleLogout={() => setIsLogoutConfirmModalOpen(true)}
-      />
+    <ExperienceApp
+      header={
+        <Header
+          driver={driver}
+          passengerName={displayPassengerName}
+          onOpenEditModal={handleOpenEditModal}
+          onOpenMercadoPagoModal={() => setIsMercadoPagoSettingsModalOpen(true)}
+          viewMode={viewMode}
+          onToggleViewMode={handleToggleViewMode}
+          isDevEnv={isDevEnv}
+          onGoogleLogout={() => setIsLogoutConfirmModalOpen(true)}
+        />
+      }
+    >
 
       <main className="max-w-xl mx-auto px-4 mt-5 space-y-5">
         {/* Development Environment Administrative Banners */}
@@ -979,7 +985,7 @@ export default function App() {
           }
         }}
       />
-    </div>
+    </ExperienceApp>
   );
 }
 
