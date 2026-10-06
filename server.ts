@@ -4,8 +4,8 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
-import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore, doc, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
+import { applicationDefault, cert, getApps as getAdminApps, initializeApp as initializeAdminApp } from 'firebase-admin/app';
+import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
 import QRCode from 'qrcode';
 
@@ -16,22 +16,45 @@ const PORT = 3000;
 
 app.use(express.json());
 
-// Initialize Firestore for backend Spotify session persistence across environments
+// Server-side Firestore uses Firebase Admin, which bypasses client security rules.
+// Configure FIREBASE_SERVICE_ACCOUNT_JSON or Application Default Credentials in production.
 let db: any = null;
 try {
   const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
   if (fs.existsSync(configPath)) {
-    const configRaw = fs.readFileSync(configPath, 'utf-8');
-    const firebaseConfig = JSON.parse(configRaw);
-    const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+    const firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    const serviceAccountJson = (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '').trim();
+    const credential = serviceAccountJson
+      ? cert(JSON.parse(serviceAccountJson))
+      : applicationDefault();
+
+    const firebaseAdminApp =
+      getAdminApps().length === 0
+        ? initializeAdminApp({ credential, projectId: firebaseConfig.projectId })
+        : getAdminApps()[0];
+
     db = firebaseConfig.firestoreDatabaseId
-      ? getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId)
-      : getFirestore(firebaseApp);
-    console.log('✅ Firestore backend inicializado para sincronização do Spotify.');
+      ? getAdminFirestore(firebaseAdminApp, firebaseConfig.firestoreDatabaseId)
+      : getAdminFirestore(firebaseAdminApp);
+
+    console.log('✅ Firestore Admin inicializado no servidor.');
   }
 } catch (e) {
-  console.warn('Aviso ao inicializar Firestore no backend:', e);
+  console.warn('Firestore Admin indisponível; persistência remota do servidor ficará desativada:', e);
 }
+
+const doc = (database: any, collectionName: string, documentId: string) =>
+  database.collection(collectionName).doc(documentId);
+const setDoc = (ref: any, data: any, options?: any) =>
+  options ? ref.set(data, options) : ref.set(data);
+const deleteDoc = (ref: any) => ref.delete();
+const getDoc = async (ref: any) => {
+  const snapshot = await ref.get();
+  return {
+    exists: () => snapshot.exists,
+    data: () => snapshot.data(),
+  };
+};
 
 const SPOTIFY_SESSION_FILE = path.join(process.cwd(), 'spotify_session.json');
 const SPOTIFY_DOC_ID = 'main_session';
