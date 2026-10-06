@@ -60,7 +60,7 @@ export const PassengerRegistrationModal: React.FC<PassengerRegistrationModalProp
 
       // Rule: Single Session vs Multi Passenger Mode
       if (!settings.allowMultiPassengerMode) {
-        await closeAllPreviousPassengerSessionsExcept(newSessionId, driverEmail);
+        await closeAllPreviousPassengerSessionsExcept(newSessionId, driverEmail, authUid);
       }
 
       await savePassengerSession(newSession);
