@@ -193,19 +193,20 @@ export async function fetchDriverProfileByEmail(email: string): Promise<DriverPr
   const emailDocId = getCleanEmailDocId(cleanEmail);
 
   try {
-    // 1. Check doc by email key directly first
-    const emailDocRef = doc(db, 'driver_profiles', emailDocId);
-    const emailSnap = await getDoc(emailDocRef);
+    const emailSnap = await getDoc(doc(db, 'driver_profiles', emailDocId));
     if (emailSnap.exists()) {
       const data = emailSnap.data();
       if (data && (data.name || data.pixKey || data.carModel || data.photoUrl)) {
         return parseDriverProfileDoc(data, cleanEmail);
       }
     }
+  } catch (error) {
+    // Legacy account documents may be unreadable until the authenticated owner migrates them.
+    console.warn('Driver account profile unavailable; trying public profile fallback:', error);
+  }
 
-    // 2. Check main_profile doc ONLY if its googleEmail or pixKey matches cleanEmail
-    const mainDocRef = doc(db, 'driver_profiles', DRIVER_DOC_ID);
-    const mainSnap = await getDoc(mainDocRef);
+  try {
+    const mainSnap = await getDoc(doc(db, 'driver_profiles', DRIVER_DOC_ID));
     if (mainSnap.exists()) {
       const data = mainSnap.data();
       const existingEmail = (data.googleEmail || '').trim().toLowerCase();
@@ -215,18 +216,8 @@ export async function fetchDriverProfileByEmail(email: string): Promise<DriverPr
         return parseDriverProfileDoc(data, cleanEmail);
       }
     }
-
-    // 3. Query driver_profiles collection by googleEmail
-    const colRef = collection(db, 'driver_profiles');
-    const q = query(colRef, where('googleEmail', '==', cleanEmail));
-    const querySnap = await getDocs(q);
-
-    if (!querySnap.empty) {
-      const docSnap = querySnap.docs[0];
-      return parseDriverProfileDoc(docSnap.data(), cleanEmail);
-    }
   } catch (error) {
-    console.warn('Error checking existing driver profile by email:', error);
+    console.warn('Error checking public driver profile:', error);
   }
 
   return null;
@@ -266,8 +257,7 @@ export function subscribeServices(onUpdate: (services: AdditionalService[]) => v
         });
         onUpdate(servicesList);
       } else {
-        // Seed default services into Firestore
-        saveAllServices(DEFAULT_SERVICES);
+        // Public readers must never seed/write the catalog.
         onUpdate(DEFAULT_SERVICES);
       }
     },
@@ -466,10 +456,15 @@ export async function savePassengerSession(session: PassengerSession) {
 }
 
 // Expire previous active passenger sessions when a new passenger registers
-export async function closeAllPreviousPassengerSessionsExcept(keepSessionId: string, driverEmail?: string) {
+export async function closeAllPreviousPassengerSessionsExcept(
+  keepSessionId: string,
+  driverEmail?: string,
+  authUid?: string
+) {
   try {
     const colRef = collection(db, 'passenger_sessions');
-    const snap = await getDocs(colRef);
+    const source = authUid ? query(colRef, where('authUid', '==', authUid)) : colRef;
+    const snap = await getDocs(source);
     const batch = writeBatch(db);
     const targetDriver = (driverEmail || '').trim().toLowerCase();
 
