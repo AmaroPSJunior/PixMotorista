@@ -396,10 +396,24 @@ export async function saveSessionSettings(settings: SessionSettings) {
 }
 
 // Subscribe to real-time list of all passenger sessions
-export function subscribePassengerSessions(onUpdate: (sessions: PassengerSession[]) => void) {
+export function subscribePassengerSessions(
+  onUpdate: (sessions: PassengerSession[]) => void,
+  options: { driverMode?: boolean; authUid?: string | null } = {}
+) {
   const colRef = collection(db, 'passenger_sessions');
+  const source = options.driverMode
+    ? colRef
+    : options.authUid
+      ? query(colRef, where('authUid', '==', options.authUid))
+      : null;
+
+  if (!source) {
+    onUpdate([]);
+    return () => {};
+  }
+
   return onSnapshot(
-    colRef,
+    source,
     (snapshot) => {
       const list: PassengerSession[] = [];
       snapshot.forEach((docSnap) => {
@@ -421,6 +435,7 @@ export function subscribePassengerSessions(onUpdate: (sessions: PassengerSession
           paidRideAmount: Number(data.paidRideAmount) || 0,
           ridePrice: data.ridePrice !== undefined ? Number(data.ridePrice) : 0,
           driverEmail: data.driverEmail || '',
+          authUid: data.authUid || '',
         });
       });
       // Sort newest first
