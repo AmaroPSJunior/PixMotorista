@@ -31,6 +31,7 @@ import {
   saveSessionSettings,
 } from '../lib/firebase';
 import { ensurePassengerAuth } from '../lib/auth';
+import { normalizeServiceId, normalizeServiceIds, SERVICE_IDS } from '../domain/serviceIds';
 
 interface PassengerSessionManagerProps {
   viewMode: 'driver' | 'passenger';
@@ -197,74 +198,45 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
     session: PassengerSession,
     resourceKey: string
   ) => {
-    const isMusic = resourceKey === 'spotify_music' || resourceKey === '2';
-    const isWifi = resourceKey === 'wifi' || resourceKey === '1';
-    const isCharger = resourceKey === 'charger' || resourceKey === '3';
-
-    const isCurrentlyUnlocked =
-      session.unlockedServices.includes(resourceKey) ||
-      (isMusic && (session.hasMusicUnlocked || session.unlockedServices.includes('2') || session.unlockedServices.includes('spotify_music'))) ||
-      (isWifi && (session.unlockedServices.includes('1') || session.unlockedServices.includes('wifi'))) ||
-      (isCharger && (session.unlockedServices.includes('3') || session.unlockedServices.includes('charger')));
-
-    const nextUnlockState = !isCurrentlyUnlocked;
+    const canonicalId = normalizeServiceId(resourceKey);
+    const unlocked = normalizeServiceIds(session.unlockedServices);
+    const nextUnlockState = !unlocked.includes(canonicalId);
 
     await toggleSessionServiceUnlock(
       session.id,
-      resourceKey,
-      session.unlockedServices,
+      canonicalId,
+      unlocked,
       nextUnlockState
     );
   };
 
-  // Helper to get unified, deduplicated list of active services for session resource controls
+  // Helper to get one canonical resource card per service.
   const unifiedServicesList = (() => {
     const list = services.length > 0 ? services : DEFAULT_SERVICES;
     const seen = new Set<string>();
-    const result: AdditionalService[] = [];
 
-    for (const srv of list) {
-      if (srv.isActive === false) continue;
-      const titleLower = (srv.title + ' ' + srv.iconName + ' ' + srv.id).toLowerCase();
-      let canonicalId = srv.id;
-
-      if (srv.id === '1' || srv.id === 'wifi' || titleLower.includes('wifi') || titleLower.includes('wi-fi')) {
-        canonicalId = 'wifi';
-      } else if (
-        srv.id === '2' ||
-        srv.id === 'spotify_music' ||
-        titleLower.includes('spotify') ||
-        titleLower.includes('música') ||
-        titleLower.includes('som')
-      ) {
-        canonicalId = 'spotify_music';
-      } else if (
-        srv.id === '3' ||
-        srv.id === 'charger' ||
-        titleLower.includes('carregador') ||
-        titleLower.includes('usb')
-      ) {
-        canonicalId = 'charger';
-      }
-
-      if (!seen.has(canonicalId)) {
-        seen.add(canonicalId);
-        result.push({
-          ...srv,
-          id: canonicalId,
+    return list
+      .filter((service) => service.isActive !== false)
+      .map((service) => {
+        const id = normalizeServiceId(service.id);
+        return {
+          ...service,
+          id,
           title:
-            canonicalId === 'wifi'
+            id === SERVICE_IDS.WIFI
               ? 'Wi-Fi 5G'
-              : canonicalId === 'spotify_music'
+              : id === SERVICE_IDS.MUSIC
               ? 'Som do Carro'
-              : canonicalId === 'charger'
+              : id === SERVICE_IDS.CHARGER
               ? 'Carregador Celular'
-              : srv.title,
-        });
-      }
-    }
-
-    return result;
+              : service.title,
+        };
+      })
+      .filter((service) => {
+        if (seen.has(service.id)) return false;
+        seen.add(service.id);
+        return true;
+      });
   })();
 
   // Filter sessions by logged in driver email or target email
