@@ -285,32 +285,19 @@ export default function App() {
   const effectiveWifiUnlocked =
     viewMode === 'driver' ? true : passengerHasWifiUnlocked;
 
-  // Pre-fill and sync ride price from active session or local storage
+  // Firestore is authoritative for shared ride data; useRideSession is the local cache.
   useEffect(() => {
-    if (ridePrice === 0) {
-      if (currentPassengerSession?.ridePrice && currentPassengerSession.ridePrice > 0) {
-        setRidePrice(currentPassengerSession.ridePrice);
-      } else if (typeof localStorage !== 'undefined') {
-        const localSavedPrice = localStorage.getItem('pix_local_ride_price');
-        if (localSavedPrice) {
-          const parsed = parseFloat(localSavedPrice);
-          if (!isNaN(parsed) && parsed > 0) {
-            setRidePrice(parsed);
-          }
-        }
-      }
+    if (
+      ridePrice === 0 &&
+      currentPassengerSession?.ridePrice &&
+      currentPassengerSession.ridePrice > 0
+    ) {
+      setRidePrice(currentPassengerSession.ridePrice);
     }
-  }, [currentPassengerSession?.ridePrice]);
+  }, [currentPassengerSession?.ridePrice, ridePrice]);
 
   const handleUpdateRidePrice = (price: number) => {
     setRidePrice(price);
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('pix_local_ride_price', String(price));
-      }
-    } catch (e) {
-      console.error(e);
-    }
     if (currentPassengerSession) {
       savePassengerSession({
         ...currentPassengerSession,
@@ -446,11 +433,6 @@ export default function App() {
   const handleToggleRidePaid = () => {
     const nextState = !isRidePaid;
     setLocalRidePaidState(nextState);
-    try {
-      localStorage.setItem('pix_local_ride_paid', String(nextState));
-    } catch (e) {
-      console.error(e);
-    }
 
     let targetSession = currentPassengerSession || passengerSessions.find((s) => s.id === activeSessionId);
     if (targetSession) {
@@ -613,12 +595,6 @@ export default function App() {
       if (paidVal > 0) {
         setLocalRidePaidState(true);
         setLocalPaidRideAmount(paidVal);
-        try {
-          localStorage.setItem('pix_local_ride_paid', 'true');
-          localStorage.setItem('pix_local_paid_ride_amount', String(paidVal));
-        } catch (e) {
-          console.error(e);
-        }
 
         let targetSession = currentPassengerSession || passengerSessions.find((s) => s.id === activeSessionId);
         if (targetSession) {
