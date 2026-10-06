@@ -1,27 +1,91 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /driver_profiles/{document=**} {
-      allow read, write: if true;
+    function signedIn() {
+      return request.auth != null;
     }
-    match /services/{document=**} {
-      allow read, write: if true;
+
+    function isDriverIdentity() {
+      return signedIn()
+        && request.auth.token.firebase.sign_in_provider != 'anonymous'
+        && request.auth.token.email != null;
     }
+
+    function ownsMainDriverProfile() {
+      return isDriverIdentity()
+        && exists(/databases/$(database)/documents/driver_profiles/main_profile)
+        && get(/databases/$(database)/documents/driver_profiles/main_profile).data.authUid == request.auth.uid;
+    }
+
+    function ownsPassengerDocument() {
+      return signedIn()
+        && resource.data.authUid != null
+        && resource.data.authUid == request.auth.uid;
+    }
+
+    match /driver_profiles/{documentId} {
+      // The current public driver card is intentionally readable by passengers.
+      allow read: if documentId == 'main_profile'
+        || (signedIn() && resource.data.authUid == request.auth.uid);
+
+      allow create: if isDriverIdentity()
+        && request.resource.data.authUid == request.auth.uid;
+
+      allow update: if isDriverIdentity()
+        && request.resource.data.authUid == request.auth.uid
+        && (
+          resource.data.authUid == request.auth.uid
+          || (
+            resource.data.authUid == null
+            && resource.data.googleEmail == request.auth.token.email
+          )
+        );
+
+      allow delete: if isDriverIdentity()
+        && resource.data.authUid == request.auth.uid;
+    }
+
+    match /services/{serviceId} {
+      allow read: if true;
+      allow write: if ownsMainDriverProfile();
+    }
+
+    match /session_settings/{documentId} {
+      allow read: if true;
+      allow write: if ownsMainDriverProfile();
+    }
+
+    match /passenger_sessions/{sessionId} {
+      allow read: if ownsMainDriverProfile() || ownsPassengerDocument();
+
+      allow create: if signedIn()
+        && request.resource.data.authUid == request.auth.uid;
+
+      allow update: if ownsMainDriverProfile()
+        || (
+          ownsPassengerDocument()
+          && request.resource.data.authUid == request.auth.uid
+        );
+
+      allow delete: if ownsMainDriverProfile() || ownsPassengerDocument();
+    }
+
+    // Tokens, payment records and provider credentials are server-only.
+    // The Express backend accesses these through Firebase Admin.
     match /spotify_sessions/{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
+
     match /pix_payments/{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
-    match /passenger_sessions/{document=**} {
-      allow read, write: if true;
-    }
-    match /session_settings/{document=**} {
-      allow read, write: if true;
-    }
+
     match /mercadopago_config/{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
-
