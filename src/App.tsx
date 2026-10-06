@@ -17,7 +17,6 @@ import { DriverProfile, AdditionalService, MercadoPagoPayment, PassengerSession,
 import { HelpCircle, ShieldCheck, Eye, Smartphone, ArrowRight, Sparkles, LogOut, Database, Users } from 'lucide-react';
 import { playPaymentSuccessSound } from './utils/audio';
 import { PassengerSessionManager } from './components/PassengerSessionManager';
-import { PassengerRegistrationModal } from './components/PassengerRegistrationModal';
 import { getOrCreateBrowserId } from './utils/browserId';
 import {
   subscribeDriverProfile,
@@ -174,6 +173,53 @@ export default function App() {
       unsubSettings();
     };
   }, [driver.googleEmail, isGoogleAuthenticated, viewMode, passengerAuthUid]);
+
+  // Passenger entry is frictionless: create/reuse one secure anonymous session automatically.
+  useEffect(() => {
+    if (viewMode !== 'passenger' || !passengerAuthUid) return;
+
+    const existing = passengerSessions.find(
+      (session) => session.status === 'active' && session.authUid === passengerAuthUid
+    );
+
+    if (existing) {
+      setActiveSessionId(existing.id);
+      try {
+        localStorage.setItem('pix_registered_session_id', existing.id);
+      } catch {}
+      return;
+    }
+
+    const sessionId = `sess_${passengerAuthUid}`;
+    const nowIso = new Date().toISOString();
+    const session: PassengerSession = {
+      id: sessionId,
+      passengerName: 'Passageiro',
+      browserId: getOrCreateBrowserId(),
+      createdAt: nowIso,
+      lastActiveAt: nowIso,
+      status: 'active',
+      unlockedServices: normalizeServiceIds(sessionSettings.defaultUnlockedServices || []),
+      hasMusicUnlocked: normalizeServiceIds(
+        sessionSettings.defaultUnlockedServices || []
+      ).includes(SERVICE_IDS.MUSIC),
+      driverEmail: getEffectiveDriverEmail(driver.googleEmail),
+      authUid: passengerAuthUid,
+    };
+
+    savePassengerSession(session);
+    setActiveSessionId(sessionId);
+    try {
+      localStorage.setItem('pix_registered_session_id', sessionId);
+      localStorage.removeItem('pix_registered_passenger_name');
+    } catch {}
+  }, [
+    viewMode,
+    passengerAuthUid,
+    passengerSessions,
+    sessionSettings.defaultUnlockedServices,
+    driver.googleEmail,
+  ]);
 
   // Restore the authenticated driver from Firebase Auth, never from localStorage.
   useEffect(() => {
@@ -878,20 +924,7 @@ export default function App() {
         onClose={() => setIsMercadoPagoSettingsModalOpen(false)}
       />
 
-      {/* Blocking Full-Screen Registration Screen for Passenger View */}
-      <PassengerRegistrationModal
-        isOpen={viewMode === 'passenger' && !passengerSessions.some((s) => s.browserId === getOrCreateBrowserId() && s.status === 'active')}
-        settings={sessionSettings}
-        driverName={driver.name}
-        carModel={driver.carModel}
-        driverEmail={getEffectiveDriverEmail(driver.googleEmail)}
-        onRegistered={(newSessId, initialRidePrice) => {
-          setActiveSessionId(newSessId);
-          if (initialRidePrice && initialRidePrice > 0) {
-            handleUpdateRidePrice(initialRidePrice);
-          }
-        }}
-      />
+
     </ExperienceApp>
   );
 }
