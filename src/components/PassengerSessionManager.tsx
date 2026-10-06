@@ -143,7 +143,7 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
     // Rule 1: Single Session vs Multi Passenger Mode
     if (!settings.allowMultiPassengerMode) {
       // Single session mode: automatically close all previous sessions
-      await closeAllPreviousPassengerSessionsExcept(newSessionId);
+      await closeAllPreviousPassengerSessionsExcept(newSessionId, undefined, authUid);
     }
 
     await savePassengerSession(newSession);
