@@ -3,7 +3,6 @@ import QRCode from 'qrcode';
 import { Copy, Check, QrCode, Mail, Zap, RefreshCw, AlertCircle, Key, Image as ImageIcon, HelpCircle, ShieldCheck } from 'lucide-react';
 import { DriverProfile } from '../types';
 import { generatePixBRCodePayload } from '../utils/pixPayload';
-import { MercadoPagoModal } from './MercadoPagoModal';
 
 interface PixSectionProps {
   driver: DriverProfile;
@@ -15,6 +14,7 @@ interface PixSectionProps {
   onClearTotal?: () => void;
   viewMode?: 'driver' | 'passenger';
   onUpdateDriver?: (updatedDriver: DriverProfile) => void;
+  onPayClick?: (amount: number) => void;
 }
 
 export const PixSection: React.FC<PixSectionProps> = ({
@@ -27,13 +27,13 @@ export const PixSection: React.FC<PixSectionProps> = ({
   onClearTotal,
   viewMode = 'passenger',
   onUpdateDriver,
+  onPayClick,
 }) => {
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [copiedPayload, setCopiedPayload] = useState<boolean>(false);
   const [qrMode, setQrMode] = useState<'brcode' | 'direct'>('brcode');
   const [customTip, setCustomTip] = useState<number>(0);
-  const [isMpModalOpen, setIsMpModalOpen] = useState<boolean>(false);
 
   const finalAmount = totalAmount + customTip;
 
@@ -135,7 +135,7 @@ export const PixSection: React.FC<PixSectionProps> = ({
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => setIsMpModalOpen(true)}
+              onClick={() => onPayClick?.(finalAmount > 0 ? finalAmount : totalAmount)}
               className="px-4 py-2.5 bg-sky-500 hover:bg-sky-400 text-slate-950 font-extrabold text-xs rounded-xl transition-all shadow-md shadow-sky-500/20 flex items-center gap-1.5 cursor-pointer active:scale-95"
             >
               <Zap className="w-4 h-4 fill-current" />
@@ -319,16 +319,7 @@ export const PixSection: React.FC<PixSectionProps> = ({
         </ol>
       </div>
 
-      {/* Mercado Pago Checkout Modal */}
-      <MercadoPagoModal
-        isOpen={isMpModalOpen}
-        onClose={() => setIsMpModalOpen(false)}
-        totalAmount={finalAmount > 0 ? finalAmount : 10.0}
-        selectedServicesCount={selectedServicesCount}
-        onPaymentSuccess={() => {
-          // Optional callback
-        }}
-      />
+
     </section>
   );
 };
