@@ -35,6 +35,7 @@ import {
 } from './lib/firebase';
 
 import { isDevEnvironment, getEffectiveDriverEmail, DEFAULT_DRIVER_EMAIL } from './utils/urlHelper';
+import { AuthenticatedDriver, signOutDriver, subscribeDriverAuth } from './lib/auth';
 
 export default function App() {
   const isDevEnv = isDevEnvironment();
@@ -123,9 +124,8 @@ export default function App() {
     return localStorage.getItem('pix_music_unlocked') === 'true';
   });
 
-  const [isGoogleAuthenticated, setIsGoogleAuthenticated] = useState<boolean>(() => {
-    return localStorage.getItem('pix_driver_google_auth') === 'true';
-  });
+  // Firebase Auth is authoritative. localStorage is never used as proof of identity.
+  const [isGoogleAuthenticated, setIsGoogleAuthenticated] = useState<boolean>(false);
 
   // Passenger Sessions State
   const [passengerSessions, setPassengerSessions] = useState<PassengerSession[]>([]);
@@ -172,22 +172,42 @@ export default function App() {
     };
   }, [driver.googleEmail, isGoogleAuthenticated]);
 
-  // Restore driver profile by targeted driver email or saved Google email on startup
+  // Restore the authenticated driver from Firebase Auth, never from localStorage.
   useEffect(() => {
-    const targetEmail = getEffectiveDriverEmail(driver.googleEmail);
-    if (targetEmail) {
-      fetchDriverProfileByEmail(targetEmail).then((foundProfile) => {
-        if (foundProfile) {
-          const isSavedAuth = localStorage.getItem('pix_driver_google_email') === targetEmail;
-          const restored = {
-            ...foundProfile,
-            googleAuthenticated: isSavedAuth ? true : foundProfile.googleAuthenticated,
-            googleEmail: targetEmail,
-          };
-          setDriver(restored);
-        }
-      });
-    }
+    return subscribeDriverAuth(async (authenticatedUser) => {
+      if (!authenticatedUser) {
+        setIsGoogleAuthenticated(false);
+        localStorage.removeItem('pix_driver_google_auth');
+        localStorage.removeItem('pix_driver_google_email');
+        return;
+      }
+
+      setIsGoogleAuthenticated(true);
+      // Email is kept only as a convenience cache/target hint; Firebase Auth remains authoritative.
+      localStorage.setItem('pix_driver_google_email', authenticatedUser.email);
+
+      const foundProfile = await fetchDriverProfileByEmail(authenticatedUser.email);
+      if (foundProfile) {
+        setDriver({
+          ...foundProfile,
+          googleAuthenticated: true,
+          googleEmail: authenticatedUser.email,
+          name: foundProfile.name || authenticatedUser.name || 'Motorista Particular',
+          photoUrl: foundProfile.photoUrl || authenticatedUser.photoUrl || '',
+        });
+      } else {
+        setDriver({
+          ...DEFAULT_DRIVER_PROFILE,
+          name: authenticatedUser.name || 'Motorista Particular',
+          photoUrl: authenticatedUser.photoUrl || '',
+          googleAuthenticated: true,
+          googleEmail: authenticatedUser.email,
+          pixKey: authenticatedUser.email,
+          pixKeyType: 'email',
+          receiverName: (authenticatedUser.name || 'Motorista Particular').toUpperCase(),
+        });
+      }
+    });
   }, []);
 
   // Strict validation: match both Browser ID AND registered Passenger Name, AND verify status is active
@@ -639,9 +659,9 @@ export default function App() {
     }
   };
 
-  const handleGoogleLoginSuccess = async (googleUser: { name: string; email: string; photoUrl: string }) => {
+  const handleGoogleLoginSuccess = async (googleUser: AuthenticatedDriver) => {
     setIsGoogleAuthenticated(true);
-    localStorage.setItem('pix_driver_google_auth', 'true');
+    localStorage.removeItem('pix_driver_google_auth');
     localStorage.setItem('pix_driver_google_email', googleUser.email);
 
     // Consult Firestore database to check if this Google account already exists
@@ -681,13 +701,17 @@ export default function App() {
     setViewMode('driver');
   };
 
-  const handleGoogleLogout = () => {
-    setIsGoogleAuthenticated(false);
-    localStorage.removeItem('pix_driver_google_auth');
-    localStorage.removeItem('pix_driver_google_email');
-    setDriver(DEFAULT_DRIVER_PROFILE);
-    setViewMode('passenger');
-    setIsLogoutConfirmModalOpen(false);
+  const handleGoogleLogout = async () => {
+    try {
+      await signOutDriver();
+    } finally {
+      setIsGoogleAuthenticated(false);
+      localStorage.removeItem('pix_driver_google_auth');
+      localStorage.removeItem('pix_driver_google_email');
+      setDriver(DEFAULT_DRIVER_PROFILE);
+      setViewMode('passenger');
+      setIsLogoutConfirmModalOpen(false);
+    }
   };
 
   const handleOpenEditModal = () => {
