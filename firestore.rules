@@ -14,12 +14,13 @@ service cloud.firestore {
     function ownsMainDriverProfile() {
       return isDriverIdentity()
         && exists(/databases/$(database)/documents/driver_profiles/main_profile)
+        && ('authUid' in get(/databases/$(database)/documents/driver_profiles/main_profile).data)
         && get(/databases/$(database)/documents/driver_profiles/main_profile).data.authUid == request.auth.uid;
     }
 
     function ownsPassengerDocument() {
       return signedIn()
-        && resource.data.authUid != null
+        && ('authUid' in resource.data)
         && resource.data.authUid == request.auth.uid;
     }
 
@@ -36,7 +37,8 @@ service cloud.firestore {
         && (
           resource.data.authUid == request.auth.uid
           || (
-            resource.data.authUid == null
+            !('authUid' in resource.data)
+            && ('googleEmail' in resource.data)
             && resource.data.googleEmail == request.auth.token.email
           )
         );
