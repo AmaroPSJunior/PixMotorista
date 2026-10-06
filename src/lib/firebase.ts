@@ -144,6 +144,7 @@ export function parseDriverProfileDoc(data: any, fallbackEmail: string): DriverP
     greetingMessage: data.greetingMessage || '',
     googleAuthenticated: Boolean(data.googleAuthenticated),
     googleEmail: data.googleEmail || fallbackEmail,
+    authUid: data.authUid || '',
     showEmailKey: data.showEmailKey !== undefined ? Boolean(data.showEmailKey) : false,
     showRandomKey: data.showRandomKey !== undefined ? Boolean(data.showRandomKey) : true,
     showCopyPasteCode: data.showCopyPasteCode !== undefined ? Boolean(data.showCopyPasteCode) : true,
