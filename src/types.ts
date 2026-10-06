@@ -21,6 +21,7 @@ export interface DriverProfile {
   greetingMessage?: string;
   googleAuthenticated?: boolean;
   googleEmail?: string;
+  authUid?: string;
   // Visibilidade de opções para o passageiro (chavinhas/toggles)
   showEmailKey?: boolean;
   showRandomKey?: boolean;
