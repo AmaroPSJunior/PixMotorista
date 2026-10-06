@@ -22,7 +22,6 @@ import {
   fetchMercadoPagoStatus,
   MercadoPagoStatusResponse,
 } from '../lib/mercadopago';
-import { subscribePixPayment } from '../lib/firebase';
 import { playPaymentSuccessSound } from '../utils/audio';
 
 interface MercadoPagoModalProps {
@@ -121,23 +120,11 @@ export const MercadoPagoModal: React.FC<MercadoPagoModalProps> = ({
     };
   }, [isOpen, totalAmount, description]);
 
-  // 2. Real-time Firebase Firestore Subscription for instant Webhook updates
+  // 2. Poll the protected backend for payment status.
+  // Payment documents stay server-only in Firestore.
   useEffect(() => {
     if (!payment?.paymentId) return;
 
-    // Firestore listener for real-time Webhook activation
-    const unsubscribe = subscribePixPayment(payment.paymentId, (updatedPayment) => {
-      if (updatedPayment) {
-        setPayment((prev) => ({ ...prev, ...updatedPayment }));
-        if (updatedPayment.status === 'approved' || updatedPayment.paymentActivated) {
-          if (onPaymentSuccess) {
-            onPaymentSuccess(updatedPayment);
-          }
-        }
-      }
-    });
-
-    // Fallback polling every 3 seconds to check Mercado Pago API status
     const pollInterval = setInterval(async () => {
       try {
         if (payment.status === 'pending') {
@@ -145,21 +132,16 @@ export const MercadoPagoModal: React.FC<MercadoPagoModalProps> = ({
           if (updated) {
             setPayment((prev) => ({ ...prev, ...updated }));
             if (updated.status === 'approved' || updated.paymentActivated) {
-              if (onPaymentSuccess) {
-                onPaymentSuccess(updated);
-              }
+              onPaymentSuccess?.(updated);
             }
           }
         }
-      } catch (e) {
-        // Silent fail polling
+      } catch {
+        // Keep the current QR visible while a transient status check fails.
       }
     }, 3000);
 
-    return () => {
-      unsubscribe();
-      clearInterval(pollInterval);
-    };
+    return () => clearInterval(pollInterval);
   }, [payment?.paymentId, payment?.status, onPaymentSuccess]);
 
   if (!isOpen) return null;
