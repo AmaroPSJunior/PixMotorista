@@ -5,6 +5,7 @@ import {
   GoogleAuthProvider,
   onAuthStateChanged,
   setPersistence,
+  signInAnonymously,
   signInWithPopup,
   signOut,
   User,
@@ -25,9 +26,9 @@ export interface AuthenticatedDriver {
   photoUrl: string;
 }
 
-function mapUser(user: User): AuthenticatedDriver {
-  if (!user.email) {
-    throw new Error('A Conta Google autenticada não possui e-mail disponível.');
+function mapDriver(user: User): AuthenticatedDriver {
+  if (user.isAnonymous || !user.email) {
+    throw new Error('Sessão atual não é uma Conta Google de motorista.');
   }
 
   return {
@@ -41,7 +42,22 @@ function mapUser(user: User): AuthenticatedDriver {
 export async function signInDriverWithGoogle(): Promise<AuthenticatedDriver> {
   await setPersistence(auth, browserLocalPersistence);
   const credential = await signInWithPopup(auth, googleProvider);
-  return mapUser(credential.user);
+  return mapDriver(credential.user);
+}
+
+export async function ensurePassengerAuth(): Promise<string> {
+  await setPersistence(auth, browserLocalPersistence);
+
+  if (auth.currentUser) {
+    return auth.currentUser.uid;
+  }
+
+  const credential = await signInAnonymously(auth);
+  return credential.user.uid;
+}
+
+export function getCurrentAuthUid(): string | null {
+  return auth.currentUser?.uid || null;
 }
 
 export async function signOutDriver(): Promise<void> {
@@ -52,6 +68,11 @@ export function subscribeDriverAuth(
   onChange: (driver: AuthenticatedDriver | null) => void
 ): () => void {
   return onAuthStateChanged(auth, (user) => {
-    onChange(user ? mapUser(user) : null);
+    if (!user || user.isAnonymous || !user.email) {
+      onChange(null);
+      return;
+    }
+
+    onChange(mapDriver(user));
   });
 }
