@@ -39,6 +39,7 @@ import { DriverApp } from './views/DriverApp';
 import { PassengerApp } from './views/PassengerApp';
 import { DriverRidePanel } from './components/DriverRidePanel';
 import { DriverHistorySummary } from './components/DriverHistorySummary';
+import { DriverRidePresets } from './components/DriverRidePresets';
 import { useRideSession } from './state/useRideSession';
 import { normalizeServiceId, normalizeServiceIds, SERVICE_IDS } from './domain/serviceIds';
 
@@ -832,6 +833,19 @@ export default function App() {
               </div>
             )}
           </>
+        )}
+
+        {viewMode === 'driver' && (
+          <DriverRidePresets
+            onSelect={(preset) => {
+              setRidePrice(preset.defaultPrice);
+              saveSessionSettings({
+                ...sessionSettings,
+                autoExpireMinutes: preset.autoExpireMinutes,
+                defaultUnlockedServices: normalizeServiceIds(preset.unlockedServices),
+              });
+            }}
+          />
         )}
 
         {viewMode === 'driver' && (
