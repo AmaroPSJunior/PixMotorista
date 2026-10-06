@@ -30,6 +30,7 @@ import {
   toggleSessionServiceUnlock,
   saveSessionSettings,
 } from '../lib/firebase';
+import { ensurePassengerAuth } from '../lib/auth';
 
 interface PassengerSessionManagerProps {
   viewMode: 'driver' | 'passenger';
@@ -117,6 +118,7 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
     if (e) e.preventDefault();
     const name = passengerNameInput.trim() || 'Passageiro(a)';
 
+    const authUid = await ensurePassengerAuth();
     const newSessionId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const nowIso = new Date().toISOString();
 
@@ -129,6 +131,7 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
       status: 'active',
       unlockedServices: [],
       hasMusicUnlocked: false,
+      authUid,
     };
 
     // Save local passenger identification for strict validation
