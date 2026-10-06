@@ -96,6 +96,7 @@ export interface PassengerSession {
   paidRideAmount?: number;
   ridePrice?: number;
   driverEmail?: string;
+  authUid?: string;
 }
 
 export interface SessionSettings {
