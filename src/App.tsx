@@ -38,6 +38,7 @@ import { isDevEnvironment, getEffectiveDriverEmail, DEFAULT_DRIVER_EMAIL } from 
 import { AuthenticatedDriver, ensurePassengerAuth, signOutDriver, subscribeDriverAuth } from './lib/auth';
 import { DriverApp } from './views/DriverApp';
 import { PassengerApp } from './views/PassengerApp';
+import { useRideSession } from './state/useRideSession';
 
 export default function App() {
   const isDevEnv = isDevEnvironment();
@@ -45,34 +46,24 @@ export default function App() {
   const [driver, setDriver] = useState<DriverProfile>(DEFAULT_DRIVER_PROFILE);
   const [services, setServices] = useState<AdditionalService[]>(DEFAULT_SERVICES);
 
-  const [ridePrice, setRidePrice] = useState<number>(0);
-  const [localRidePaidState, setLocalRidePaidState] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('pix_local_ride_paid') === 'true';
-    } catch {
-      return false;
-    }
-  });
-  const [localPaidRideAmount, setLocalPaidRideAmount] = useState<number>(() => {
-    try {
-      const val = localStorage.getItem('pix_local_paid_ride_amount');
-      return val ? parseFloat(val) : 0;
-    } catch {
-      return 0;
-    }
-  });
-
-  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
-  const [productQuantities, setProductQuantities] = useState<Record<string, number>>({});
-
-  const [localPurchasedProducts, setLocalPurchasedProducts] = useState<Record<string, number>>(() => {
-    try {
-      const saved = localStorage.getItem('pix_local_purchased_products');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
+  const {
+    ridePrice,
+    setRidePrice,
+    localRidePaidState,
+    setLocalRidePaidState,
+    localPaidRideAmount,
+    setLocalPaidRideAmount,
+    selectedServiceIds,
+    setSelectedServiceIds,
+    productQuantities,
+    setProductQuantities,
+    localPurchasedProducts,
+    setLocalPurchasedProducts,
+    selectedTip,
+    setSelectedTip,
+    localUnlockedServices,
+    setLocalUnlockedServices,
+  } = useRideSession();
 
   const saveLocalPurchasedProducts = (newMap: Record<string, number>) => {
     setLocalPurchasedProducts((prev) => {
@@ -80,15 +71,10 @@ export default function App() {
       Object.entries(newMap).forEach(([id, qty]) => {
         updated[id] = (updated[id] || 0) + qty;
       });
-      try {
-        localStorage.setItem('pix_local_purchased_products', JSON.stringify(updated));
-      } catch (e) {
-        console.error('Error saving local purchased products:', e);
-      }
       return updated;
     });
   };
-  const [selectedTip, setSelectedTip] = useState<number>(0);
+
   const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
   const [isGoogleAuthModalOpen, setIsGoogleAuthModalOpen] = useState<boolean>(false);
@@ -100,26 +86,10 @@ export default function App() {
   const [mpModalAmount, setMpModalAmount] = useState<number>(0);
   const [mpModalDescription, setMpModalDescription] = useState<string>('Serviços de Corrida Moto / Extras');
 
-  // Requirement 1: State for local unlocked services
-  const [localUnlockedServices, setLocalUnlockedServices] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('pix_local_unlocked_services');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
   const saveLocalUnlockedServices = (newServices: string[]) => {
-    setLocalUnlockedServices((prev) => {
-      const updated = Array.from(new Set([...prev, ...newServices]));
-      try {
-        localStorage.setItem('pix_local_unlocked_services', JSON.stringify(updated));
-      } catch (e) {
-        console.error('Error saving local unlocked services:', e);
-      }
-      return updated;
-    });
+    setLocalUnlockedServices((prev) =>
+      Array.from(new Set([...prev, ...newServices]))
+    );
   };
 
   const [isMusicUnlocked, setIsMusicUnlocked] = useState<boolean>(() => {
