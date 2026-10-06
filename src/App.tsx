@@ -796,6 +796,16 @@ export default function App() {
               setDriver(updated);
               saveDriverProfile(updated);
             }}
+            onPayClick={(amount) => {
+              const descParts: string[] = [];
+              if (ridePrice > 0) descParts.push('Corrida');
+              if (selectedServicesTotal > 0) descParts.push(`Serviços A Bordo (${selectedServiceIds.length})`);
+              if (selectedTip > 0) descParts.push('Caixinha');
+              handleOpenMercadoPagoModal(
+                amount,
+                descParts.length > 0 ? descParts.join(' + ') : 'Pagamento via Pix'
+              );
+            }}
           />
         </div>
 
