@@ -27,6 +27,7 @@ try {
 import firebaseConfig from '../../firebase-applet-config.json';
 import { DriverProfile, AdditionalService, PassengerSession, SessionSettings } from '../types';
 import { DEFAULT_DRIVER_PROFILE, DEFAULT_SERVICES } from '../data/defaultData';
+import { normalizeServiceId, normalizeServiceIds } from '../domain/serviceIds';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
@@ -415,7 +416,7 @@ export function subscribePassengerSessions(
           createdAt: data.createdAt || new Date().toISOString(),
           lastActiveAt: data.lastActiveAt || new Date().toISOString(),
           status: data.status || 'active',
-          unlockedServices: Array.isArray(data.unlockedServices) ? data.unlockedServices : [],
+          unlockedServices: Array.isArray(data.unlockedServices) ? normalizeServiceIds(data.unlockedServices) : [],
           purchasedProducts: (data.purchasedProducts && typeof data.purchasedProducts === 'object') ? data.purchasedProducts : {},
           hasMusicUnlocked: Boolean(data.hasMusicUnlocked),
           paidAmount: Number(data.paidAmount) || 0,
@@ -517,90 +518,26 @@ export async function toggleSessionServiceUnlock(
 ) {
   try {
     const docRef = doc(db, 'passenger_sessions', sessionId);
-    let updatedList = [...currentUnlockedServices];
-
-    // Canonical key mapping for backward compatibility
-    const targetKeys =
-      serviceId === 'spotify_music' || serviceId === '2'
-        ? ['spotify_music', '2']
-        : serviceId === 'wifi' || serviceId === '1'
-        ? ['wifi', '1']
-        : serviceId === 'charger' || serviceId === '3'
-        ? ['charger', '3']
-        : [serviceId];
+    const canonicalId = normalizeServiceId(serviceId);
+    let updatedList = normalizeServiceIds(currentUnlockedServices);
 
     if (unlock) {
-      targetKeys.forEach((key) => {
-        if (!updatedList.includes(key)) {
-          updatedList.push(key);
-        }
-      });
+      if (!updatedList.includes(canonicalId)) updatedList.push(canonicalId);
     } else {
-      updatedList = updatedList.filter((id) => !targetKeys.includes(id));
+      updatedList = updatedList.filter((id) => id !== canonicalId);
     }
-
-    const hasMusic =
-      updatedList.includes('spotify_music') || updatedList.includes('2');
 
     await setDoc(
       docRef,
       {
         unlockedServices: updatedList,
-        hasMusicUnlocked: hasMusic,
+        hasMusicUnlocked: updatedList.includes('spotify_music'),
         updatedAt: new Date().toISOString(),
       },
       { merge: true }
     );
   } catch (error) {
     console.error('Error unlocking session service:', error);
-  }
-}
-
-export interface MercadoPagoConfigData {
-  accessToken: string;
-  publicKey?: string;
-  useRealPixInDev?: boolean;
-}
-
-export function subscribeMercadoPagoConfig(onUpdate: (config: MercadoPagoConfigData) => void) {
-  const docRef = doc(db, 'mercadopago_config', 'main_config');
-  return onSnapshot(
-    docRef,
-    (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        onUpdate({
-          accessToken: data.accessToken || '',
-          publicKey: data.publicKey || '',
-          useRealPixInDev: data.useRealPixInDev !== false,
-        });
-      } else {
-        onUpdate({
-          accessToken: '',
-          publicKey: '',
-          useRealPixInDev: true,
-        });
-      }
-    },
-    (error) => {
-      console.warn('Firestore mercadopago_config error:', error);
-    }
-  );
-}
-
-export async function saveMercadoPagoConfig(config: MercadoPagoConfigData) {
-  try {
-    const docRef = doc(db, 'mercadopago_config', 'main_config');
-    await setDoc(
-      docRef,
-      sanitizeFirestoreData({
-        ...config,
-        updatedAt: new Date().toISOString(),
-      }),
-      { merge: true }
-    );
-  } catch (error) {
-    console.error('Error saving Mercado Pago config:', error);
   }
 }
 
