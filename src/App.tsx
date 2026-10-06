@@ -192,6 +192,7 @@ export default function App() {
           ...foundProfile,
           googleAuthenticated: true,
           googleEmail: authenticatedUser.email,
+          authUid: authenticatedUser.uid,
           name: foundProfile.name || authenticatedUser.name || 'Motorista Particular',
           photoUrl: foundProfile.photoUrl || authenticatedUser.photoUrl || '',
         });
@@ -202,6 +203,7 @@ export default function App() {
           photoUrl: authenticatedUser.photoUrl || '',
           googleAuthenticated: true,
           googleEmail: authenticatedUser.email,
+          authUid: authenticatedUser.uid,
           pixKey: authenticatedUser.email,
           pixKeyType: 'email',
           receiverName: (authenticatedUser.name || 'Motorista Particular').toUpperCase(),
@@ -674,6 +676,7 @@ export default function App() {
         ...existingProfile,
         googleAuthenticated: true,
         googleEmail: googleUser.email,
+        authUid: googleUser.uid,
         name: (existingProfile.name && existingProfile.name !== 'Motorista Particular')
           ? existingProfile.name
           : (googleUser.name || 'Motorista Particular'),
@@ -689,6 +692,7 @@ export default function App() {
         photoUrl: googleUser.photoUrl || '',
         googleAuthenticated: true,
         googleEmail: googleUser.email,
+        authUid: googleUser.uid,
         pixKey: googleUser.email,
         pixKeyType: 'email',
         receiverName: (googleUser.name || 'Motorista Particular').toUpperCase(),
