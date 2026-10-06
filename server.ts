@@ -1595,7 +1595,7 @@ app.all('/api/mercadopago/webhook', async (req, res) => {
     const body = req.body || {};
     const query = req.query || {};
 
-    console.log('🔔 Webhook Mercado Pago recebido:', { body, query });
+    console.log('Webhook Mercado Pago recebido para processamento.');
 
     // Extract payment ID from various notification formats sent by MP
     const paymentId =
@@ -1610,8 +1610,9 @@ app.all('/api/mercadopago/webhook', async (req, res) => {
     }
 
     const mpPayment = await getMercadoPagoPaymentClient();
-    let newStatus = 'approved'; // Default if verified or simulated
-    let statusDetail = 'accredited';
+    const existing = paymentStore[paymentId] || {};
+    let newStatus = existing.status || 'pending';
+    let statusDetail = existing.statusDetail || 'pending_waiting_transfer';
     let verifiedFromMp = false;
 
     if (mpPayment) {
@@ -1628,10 +1629,14 @@ app.all('/api/mercadopago/webhook', async (req, res) => {
       }
     }
 
-    const isActivated = newStatus === 'approved';
+    if (process.env.NODE_ENV === 'production' && !verifiedFromMp) {
+      console.warn(`Webhook ${paymentId} não pôde ser verificado no Mercado Pago.`);
+      return res.status(202).json({ received: true, paymentId, verified: false });
+    }
+
+    const isActivated = verifiedFromMp && newStatus === 'approved';
 
     // Update in memory cache
-    const existing = paymentStore[paymentId] || {};
     const updatedPayment = {
       ...existing,
       paymentId,
