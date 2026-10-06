@@ -38,6 +38,7 @@ import { AuthenticatedDriver, ensurePassengerAuth, signOutDriver, subscribeDrive
 import { DriverApp } from './views/DriverApp';
 import { PassengerApp } from './views/PassengerApp';
 import { DriverRidePanel } from './components/DriverRidePanel';
+import { DriverHistorySummary } from './components/DriverHistorySummary';
 import { useRideSession } from './state/useRideSession';
 import { normalizeServiceId, normalizeServiceIds, SERVICE_IDS } from './domain/serviceIds';
 
@@ -844,6 +845,10 @@ export default function App() {
             onStartRide={handleStartRide}
             onEndRide={handleEndRide}
           />
+        )}
+
+        {viewMode === 'driver' && (
+          <DriverHistorySummary sessions={passengerSessions} />
         )}
 
         {/* Central Passenger Session Management System */}
