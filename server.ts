@@ -9,6 +9,7 @@ import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
 import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
 import QRCode from 'qrcode';
+import firebaseClientConfig from './firebase-applet-config.json';
 
 dotenv.config();
 
@@ -71,60 +72,55 @@ let db: any = null;
 let adminAuth: any = null;
 let firebaseAdminInitError = '';
 try {
-  const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
-  if (fs.existsSync(configPath)) {
-    const firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    const serviceAccountRaw = (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '').trim();
+  const firebaseConfig: any = firebaseClientConfig;
+  const serviceAccountRaw = (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '').trim();
 
-    const parseServiceAccount = (raw: string): any => {
-      if (!raw) return null;
+  const parseServiceAccount = (raw: string): any => {
+    if (!raw) return null;
 
-      const attempts: string[] = [raw];
+    const attempts: string[] = [raw];
 
-      // Support values pasted as a quoted JSON string.
+    try {
+      const once = JSON.parse(raw);
+      if (typeof once === 'string') attempts.push(once);
+      else if (once && typeof once === 'object') return once;
+    } catch {}
+
+    try {
+      attempts.push(Buffer.from(raw, 'base64').toString('utf8'));
+    } catch {}
+
+    for (const candidate of attempts) {
       try {
-        const once = JSON.parse(raw);
-        if (typeof once === 'string') attempts.push(once);
-        else if (once && typeof once === 'object') return once;
-      } catch {}
-
-      // Support base64-encoded service account JSON.
-      try {
-        attempts.push(Buffer.from(raw, 'base64').toString('utf8'));
-      } catch {}
-
-      for (const candidate of attempts) {
-        try {
-          const parsed = JSON.parse(candidate);
-          if (parsed && typeof parsed === 'object') {
-            if (typeof parsed.private_key === 'string') {
-              parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
-            }
-            return parsed;
+        const parsed = JSON.parse(candidate);
+        if (parsed && typeof parsed === 'object') {
+          if (typeof parsed.private_key === 'string') {
+            parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
           }
-        } catch {}
-      }
+          return parsed;
+        }
+      } catch {}
+    }
 
-      throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON existe, mas não contém JSON/base64 válido.');
-    };
+    throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON existe, mas não contém JSON/base64 válido.');
+  };
 
-    const serviceAccount = parseServiceAccount(serviceAccountRaw);
-    const credential = serviceAccount
-      ? cert(serviceAccount)
-      : applicationDefault();
+  const serviceAccount = parseServiceAccount(serviceAccountRaw);
+  const credential = serviceAccount
+    ? cert(serviceAccount)
+    : applicationDefault();
 
-    const firebaseAdminApp =
-      getAdminApps().length === 0
-        ? initializeAdminApp({ credential, projectId: firebaseConfig.projectId })
-        : getAdminApps()[0];
+  const firebaseAdminApp =
+    getAdminApps().length === 0
+      ? initializeAdminApp({ credential, projectId: firebaseConfig.projectId })
+      : getAdminApps()[0];
 
-    db = firebaseConfig.firestoreDatabaseId
-      ? getAdminFirestore(firebaseAdminApp, firebaseConfig.firestoreDatabaseId)
-      : getAdminFirestore(firebaseAdminApp);
-    adminAuth = getAdminAuth(firebaseAdminApp);
+  db = firebaseConfig.firestoreDatabaseId
+    ? getAdminFirestore(firebaseAdminApp, firebaseConfig.firestoreDatabaseId)
+    : getAdminFirestore(firebaseAdminApp);
+  adminAuth = getAdminAuth(firebaseAdminApp);
 
-    console.log('✅ Firestore Admin inicializado no servidor.');
-  }
+  console.log('✅ Firestore Admin inicializado no servidor.');
 } catch (e: any) {
   firebaseAdminInitError = e?.message || String(e);
   console.warn('Firestore Admin indisponível; persistência remota do servidor ficará desativada:', e);
