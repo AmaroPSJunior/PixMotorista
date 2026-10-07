@@ -71,8 +71,7 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
       : '';
 
   // Find current active session for this browser device and passenger name
-  const currentDeviceSession = sessions.find((s) => {
-    if (s.status !== 'active') return false;
+  const currentDeviceAnySession = sessions.find((s) => {
     if (s.browserId !== browserId) return false;
     if (registeredName && s.passengerName.trim().toLowerCase() !== registeredName) {
       return false;
@@ -82,6 +81,9 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
     }
     return true;
   });
+
+  const currentDeviceSession =
+    currentDeviceAnySession?.status === 'active' ? currentDeviceAnySession : undefined;
 
   // Auto-fill input when device session exists
   useEffect(() => {
@@ -163,20 +165,42 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
   };
 
   const handleActivateSession = async (session: PassengerSession) => {
+    const deadline = session.reactivationExpiresAt
+      ? new Date(session.reactivationExpiresAt).getTime()
+      : new Date(session.lastActiveAt || session.createdAt).getTime() + 24 * 60 * 60 * 1000;
+    if (Date.now() > deadline) {
+      alert('O prazo de 24 horas para reativar este passageiro terminou.');
+      return;
+    }
     if (!settings.allowMultiPassengerMode) {
       // Close other active sessions if multi-passenger mode is disabled
       await closeAllPreviousPassengerSessionsExcept(session.id);
     }
-    await updatePassengerSessionStatus(session.id, 'active');
-    await savePassengerSession({
-      ...session,
-      status: 'active',
+    await updatePassengerSessionStatus(session.id, 'active', {
       lastActiveAt: new Date().toISOString(),
+      closedAt: undefined,
+      reactivationExpiresAt: undefined,
     });
+    onSetActiveSessionId(session.id);
   };
 
   const handleCloseSession = async (sessionId: string) => {
-    await updatePassengerSessionStatus(sessionId, 'closed');
+    const now = new Date();
+    await updatePassengerSessionStatus(sessionId, 'closed', {
+      closedAt: now.toISOString(),
+      reactivationExpiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+    });
+    if (activeSessionId === sessionId) onSetActiveSessionId(null);
+  };
+
+  const handlePassengerExit = async () => {
+    if (!currentDeviceSession) return;
+    const now = new Date();
+    await updatePassengerSessionStatus(currentDeviceSession.id, 'closed', {
+      closedAt: now.toISOString(),
+      reactivationExpiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+    });
+    onSetActiveSessionId(null);
   };
 
   const handleToggleResource = async (
@@ -249,7 +273,36 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
       (!currentDeviceSession?.passengerName ||
         currentDeviceSession.passengerName.trim().toLowerCase() === 'passageiro');
 
-    if (!needsName) return null;
+    if (!needsName) {
+      if (currentDeviceSession) {
+        return (
+          <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-black text-slate-800">Sessão do passageiro ativa</p>
+              <p className="text-[11px] text-slate-500">Você pode sair desta sessão a qualquer momento.</p>
+            </div>
+            <button
+              type="button"
+              onClick={handlePassengerExit}
+              className="shrink-0 px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black"
+            >
+              Sair
+            </button>
+          </section>
+        );
+      }
+
+      if (currentDeviceAnySession?.status === 'closed') {
+        return (
+          <section className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-center">
+            <p className="text-sm font-black text-amber-900">Você saiu da sessão</p>
+            <p className="text-xs text-amber-800 mt-1">O motorista pode reativar seu acesso por até 24 horas.</p>
+          </section>
+        );
+      }
+
+      return null;
+    }
 
     return (
       <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
@@ -563,16 +616,26 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
 
                             {/* Quick Driver Controls for Session */}
                             <div className="flex items-center gap-1.5">
-                              {!isActive ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleActivateSession(session)}
-                                  className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
-                                >
-                                  <Zap className="w-3.5 h-3.5 fill-current text-slate-950" />
-                                  <span>{isExpired ? 'Reativar Sessão' : 'Ativar Sessão'}</span>
-                                </button>
-                              ) : (
+                              {!isActive ? (() => {
+                                const deadline = session.reactivationExpiresAt
+                                  ? new Date(session.reactivationExpiresAt).getTime()
+                                  : new Date(session.lastActiveAt || session.createdAt).getTime() + 24 * 60 * 60 * 1000;
+                                const canReactivate = Date.now() <= deadline;
+                                return canReactivate ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleActivateSession(session)}
+                                    className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
+                                  >
+                                    <Zap className="w-3.5 h-3.5 fill-current text-slate-950" />
+                                    <span>Reativar</span>
+                                  </button>
+                                ) : (
+                                  <span className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-500 text-[10px] font-bold">
+                                    Prazo de 24h encerrado
+                                  </span>
+                                );
+                              })() : (
                                 <button
                                   type="button"
                                   onClick={() => handleCloseSession(session.id)}
