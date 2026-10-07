@@ -1501,18 +1501,29 @@ async function applyApprovedPaymentEffects(payment: any) {
       const sessionSnap = await getDoc(sessionRef);
       if (sessionSnap.exists()) {
         const current = sessionSnap.data() || {};
+        const appliedPaymentIds = Array.isArray(current.appliedPaymentIds)
+          ? current.appliedPaymentIds.map((id: any) => String(id))
+          : [];
+        const alreadyApplied = appliedPaymentIds.includes(String(payment.paymentId));
         const unlocked = Array.from(new Set([...(Array.isArray(current.unlockedServices) ? current.unlockedServices : []), ...serviceIds]));
         const purchased = { ...(current.purchasedProducts || {}) };
-        for (const [id, qty] of Object.entries(productQuantities)) {
-          const amount = Math.max(0, Number(qty) || 0);
-          if (amount > 0) purchased[id] = (Number(purchased[id]) || 0) + amount;
+
+        if (!alreadyApplied) {
+          for (const [id, qty] of Object.entries(productQuantities)) {
+            const amount = Math.max(0, Number(qty) || 0);
+            if (amount > 0) purchased[id] = (Number(purchased[id]) || 0) + amount;
+          }
         }
+
         await setDoc(sessionRef, {
           unlockedServices: unlocked,
           purchasedProducts: purchased,
           hasMusicUnlocked: unlocked.includes('spotify_music'),
           paymentId: payment.paymentId,
           paidAmount: Number(payment.amount) || 0,
+          appliedPaymentIds: alreadyApplied
+            ? appliedPaymentIds
+            : [...appliedPaymentIds, String(payment.paymentId)].slice(-50),
           ...(includesRide ? { isRidePaid: true, paidRideAmount: Number(payment.amount) || 0 } : {}),
           updatedAt: new Date().toISOString(),
         }, { merge: true });
