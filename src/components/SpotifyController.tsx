@@ -442,8 +442,18 @@ export const SpotifyController: React.FC<SpotifyControllerProps> = ({
           Controle de Músicas no Carro (Spotify)
         </h3>
         <p className="text-slate-400 text-xs max-w-sm mx-auto leading-relaxed">
-          O recurso já está disponível. Falta apenas o motorista conectar a conta do Spotify para liberar o controle durante a viagem.
+          O recurso já está disponível. Você pode solicitar a liberação agora; o motorista poderá liberar o controle para a sua sessão.
         </p>
+        {onUnlockClick && (
+          <button
+            type="button"
+            onClick={onUnlockClick}
+            className="mt-5 w-full sm:w-auto px-6 py-3.5 bg-gradient-to-r from-sky-400 via-emerald-400 to-sky-400 hover:from-sky-300 hover:to-emerald-300 text-slate-950 font-black text-xs sm:text-sm rounded-xl transition-all shadow-xl shadow-sky-500/25 inline-flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
+          >
+            <Unlock className="w-4 h-4" />
+            Liberar Spotify
+          </button>
+        )}
       </section>
     );
   }
