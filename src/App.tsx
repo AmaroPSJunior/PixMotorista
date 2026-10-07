@@ -39,7 +39,7 @@ import {
 } from './lib/firebase';
 
 import { isDevEnvironment, getDriverEmailFromUrl, getEffectiveDriverEmail, getExperienceFromUrl, getRideIdFromUrl, navigateToExperience, getPublicPassengerUrl } from './utils/urlHelper';
-import { AuthenticatedDriver, ensurePassengerAuth, signOutDriver, subscribeDriverAuth } from './lib/auth';
+import { AuthenticatedDriver, ensurePassengerAuth, getCurrentIdToken, signOutDriver, subscribeDriverAuth } from './lib/auth';
 import { DriverApp } from './views/DriverApp';
 import { PassengerApp } from './views/PassengerApp';
 import { DriverRidePanel } from './components/DriverRidePanel';
@@ -367,6 +367,28 @@ export default function App() {
   });
 
   const displayPassengerName = currentPassengerSession?.passengerName || rawPassengerName || 'Passageiro';
+  const handlePassengerExit = async () => {
+    if (!currentPassengerSession) return;
+    try {
+      const token = await getCurrentIdToken();
+      const response = await fetch('/api/passenger/session/close', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ sessionId: currentPassengerSession.id }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || 'Não foi possível sair da sessão.');
+      }
+      setActiveSessionId(null);
+    } catch (error: any) {
+      alert(error?.message || 'Não foi possível sair da sessão.');
+    }
+  };
+
 
   // Active passenger session unlocked services list from Firestore (authoritative)
   // Combine session-specific unlocks with global default unlocked services from sessionSettings
@@ -887,6 +909,8 @@ export default function App() {
           onToggleViewMode={handleToggleViewMode}
           isDevEnv={isDevEnv || viewMode === 'driver'}
           onGoogleLogout={() => setIsLogoutConfirmModalOpen(true)}
+          onPassengerExit={handlePassengerExit}
+          passengerSessionActive={viewMode === 'passenger' && Boolean(currentPassengerSession)}
         />
       }
     >
