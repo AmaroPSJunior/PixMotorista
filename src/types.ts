@@ -124,6 +124,8 @@ export interface PassengerSession {
   driverUid?: string;
   rideId?: string;
   authUid?: string;
+  closedAt?: string;
+  reactivationExpiresAt?: string;
 }
 
 export interface SessionSettings {
