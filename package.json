@@ -1,7 +1,7 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -10,7 +10,10 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx --test tests/**/*.test.ts"
+    "test": "tsx --test tests/**/*.test.ts",
+    "version:patch": "tsx scripts/bump-version.ts patch",
+    "version:minor": "tsx scripts/bump-version.ts minor",
+    "version:major": "tsx scripts/bump-version.ts major"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
