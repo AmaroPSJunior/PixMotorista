@@ -401,6 +401,10 @@ export const SpotifyController: React.FC<SpotifyControllerProps> = ({
   const devUrl = typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : '';
   const isApiIntegrated = Boolean(spotifyStatus?.isIntegrated || spotifyStatus?.hasToken || isConnected);
 
+  // Payment/session authorization is independent from the driver's Spotify OAuth state.
+  // A passenger who already paid must never be sent back to the payment/unlock CTA.
+  const isLockedForPassenger = !isDriverView && !isMusicUnlocked;
+
   // If Spotify API is NOT integrated by the driver yet:
   if (!isApiIntegrated) {
     if (isDriverView) {
@@ -425,6 +429,25 @@ export const SpotifyController: React.FC<SpotifyControllerProps> = ({
               Configurar Conexão do Spotify
             </button>
           )}
+        </section>
+      );
+    }
+
+    if (isMusicUnlocked) {
+      return (
+        <section data-testid="spotify-controller-unlocked" className="bg-slate-900 text-white rounded-2xl shadow-xl overflow-hidden border border-emerald-500/40 p-6 text-center my-4">
+          <div className="w-14 h-14 bg-emerald-500/10 border border-emerald-500/30 rounded-full flex items-center justify-center mx-auto mb-3 text-emerald-400">
+            <CheckCircle2 className="w-7 h-7" />
+          </div>
+          <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full inline-block mb-2 border border-emerald-500/30">
+            Músicas Liberadas!
+          </span>
+          <h3 className="text-lg font-extrabold text-white mb-1">
+            Escolha de Músicas Liberada
+          </h3>
+          <p className="text-slate-400 text-xs max-w-sm mx-auto leading-relaxed">
+            Sua liberação foi confirmada. O controle do som ficará ativo assim que o motorista conectar a conta do Spotify ao veículo.
+          </p>
         </section>
       );
     }
@@ -458,9 +481,6 @@ export const SpotifyController: React.FC<SpotifyControllerProps> = ({
       </section>
     );
   }
-
-  // Requirement 1: Lock music selection for passenger until payment confirmation from Mercado Pago
-  const isLockedForPassenger = !isDriverView && !isMusicUnlocked;
 
   if (isLockedForPassenger) {
     return (
