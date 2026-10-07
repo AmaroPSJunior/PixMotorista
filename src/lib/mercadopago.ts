@@ -38,6 +38,9 @@ export async function createMercadoPagoPixPayment(params: {
   };
   serviceId?: string;
   rideId?: string;
+  passengerSessionId?: string;
+  serviceIds?: string[];
+  productQuantities?: Record<string, number>;
 }): Promise<MercadoPagoPayment> {
   const response = await fetch('/api/mercadopago/create-payment', {
     method: 'POST',
