@@ -6,6 +6,7 @@ import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import { applicationDefault, cert, getApps as getAdminApps, initializeApp as initializeAdminApp } from 'firebase-admin/app';
 import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
+import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
 import QRCode from 'qrcode';
 
@@ -67,6 +68,7 @@ app.use('/api/mercadopago/webhook', async (req, res, next) => {
 // Server-side Firestore uses Firebase Admin, which bypasses client security rules.
 // Configure FIREBASE_SERVICE_ACCOUNT_JSON or Application Default Credentials in production.
 let db: any = null;
+let adminAuth: any = null;
 try {
   const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
   if (fs.existsSync(configPath)) {
@@ -84,6 +86,7 @@ try {
     db = firebaseConfig.firestoreDatabaseId
       ? getAdminFirestore(firebaseAdminApp, firebaseConfig.firestoreDatabaseId)
       : getAdminFirestore(firebaseAdminApp);
+    adminAuth = getAdminAuth(firebaseAdminApp);
 
     console.log('✅ Firestore Admin inicializado no servidor.');
   }
@@ -103,6 +106,55 @@ const getDoc = async (ref: any) => {
     data: () => snapshot.data(),
   };
 };
+
+app.post('/api/passenger/session/close', async (req, res) => {
+  try {
+    if (!db || !adminAuth) {
+      return res.status(503).json({ error: 'Serviço de sessão indisponível.' });
+    }
+
+    const authHeader = req.get('authorization') || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!token) return res.status(401).json({ error: 'Autenticação do passageiro ausente.' });
+
+    const decoded = await adminAuth.verifyIdToken(token);
+    const provider = decoded.firebase?.sign_in_provider;
+    if (provider !== 'anonymous') {
+      return res.status(403).json({ error: 'Somente a sessão anônima do passageiro pode usar esta rota.' });
+    }
+
+    const sessionId = String(req.body?.sessionId || '').trim();
+    if (!sessionId) return res.status(400).json({ error: 'sessionId obrigatório.' });
+
+    const ref = doc(db, 'passenger_sessions', sessionId);
+    const snapshot = await ref.get();
+    if (!snapshot.exists) return res.status(404).json({ error: 'Sessão não encontrada.' });
+
+    const session = snapshot.data() || {};
+    if (session.authUid !== decoded.uid) {
+      return res.status(403).json({ error: 'Esta sessão pertence a outro passageiro.' });
+    }
+
+    const now = new Date();
+    const reactivationExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    await ref.set({
+      status: 'closed',
+      closedAt: now.toISOString(),
+      reactivationExpiresAt: reactivationExpiresAt.toISOString(),
+      updatedAt: now.toISOString(),
+    }, { merge: true });
+
+    return res.json({
+      success: true,
+      sessionId,
+      status: 'closed',
+      reactivationExpiresAt: reactivationExpiresAt.toISOString(),
+    });
+  } catch (error) {
+    console.error('Erro ao encerrar sessão do passageiro:', error);
+    return res.status(401).json({ error: 'Não foi possível validar ou encerrar a sessão.' });
+  }
+});
 
 const SPOTIFY_SESSION_FILE = path.join(process.cwd(), 'spotify_session.json');
 const SPOTIFY_DOC_ID = 'main_session';
