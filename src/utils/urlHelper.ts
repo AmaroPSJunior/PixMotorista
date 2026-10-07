@@ -82,7 +82,7 @@ export function getEffectiveDriverEmail(explicitEmail?: string): string {
  * Helper to get the 100% public URL for the passenger view with driver parameter.
  * Uses the official published domain or current window origin, attaching ?driver=<driverEmail>.
  */
-export function getPublicPassengerUrl(customPublicUrl?: string, driverEmail?: string): string {
+export function getPublicPassengerUrl(customPublicUrl?: string, driverEmail?: string, rideId?: string): string {
   const targetEmail = driverEmail || getEffectiveDriverEmail();
 
   if (customPublicUrl && customPublicUrl.trim().length > 0) {
@@ -96,12 +96,17 @@ export function getPublicPassengerUrl(customPublicUrl?: string, driverEmail?: st
     if (!url.includes('driver=')) {
       url += `&driver=${encodeURIComponent(targetEmail)}`;
     }
+    if (rideId && !url.includes('ride=')) {
+      url += `&ride=${encodeURIComponent(rideId)}`;
+    }
     return url;
   }
 
   // Use current window origin if available, or fall back to production PUBLIC_APP_URL
   const baseUrl = (typeof window !== 'undefined' && window.location.origin) ? window.location.origin : PUBLIC_APP_URL;
-  return `${baseUrl}/passageiro?driver=${encodeURIComponent(targetEmail)}`;
+  const params = new URLSearchParams({ driver: targetEmail });
+  if (rideId) params.set('ride', rideId);
+  return `${baseUrl}/passageiro?${params.toString()}`;
 }
 
 
