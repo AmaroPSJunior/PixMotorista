@@ -25,7 +25,7 @@ try {
   // Ignore in case setLogLevel fails in certain environments
 }
 import firebaseConfig from '../../firebase-applet-config.json';
-import { DriverProfile, AdditionalService, PassengerSession, SessionSettings } from '../types';
+import { DriverProfile, AdditionalService, PassengerSession, SessionSettings, Ride, RideStatus } from '../types';
 import { DEFAULT_DRIVER_PROFILE, DEFAULT_SERVICES } from '../data/defaultData';
 import { normalizeServiceId, normalizeServiceIds } from '../domain/serviceIds';
 
@@ -426,6 +426,8 @@ export function subscribePassengerSessions(
           paidRideAmount: Number(data.paidRideAmount) || 0,
           ridePrice: data.ridePrice !== undefined ? Number(data.ridePrice) : 0,
           driverEmail: data.driverEmail || '',
+          driverUid: data.driverUid || '',
+          rideId: data.rideId || '',
           authUid: data.authUid || '',
         });
       });
@@ -569,3 +571,81 @@ export async function recordPurchasedProductsToSession(
 }
 
 
+
+
+function parseRideDoc(id: string, data: any): Ride {
+  return {
+    id,
+    driverUid: data.driverUid || '',
+    driverEmail: data.driverEmail || '',
+    status: (data.status || 'created') as Ride['status'],
+    paymentStatus: (data.paymentStatus || 'unpaid') as Ride['paymentStatus'],
+    price: Number(data.price) || 0,
+    createdAt: data.createdAt || new Date().toISOString(),
+    startedAt: data.startedAt || undefined,
+    endedAt: data.endedAt || undefined,
+    expiresAt: data.expiresAt || undefined,
+    defaultUnlockedServices: Array.isArray(data.defaultUnlockedServices)
+      ? normalizeServiceIds(data.defaultUnlockedServices)
+      : [],
+    passengerSessionId: data.passengerSessionId || undefined,
+    paymentId: data.paymentId || undefined,
+    paidAmount: Number(data.paidAmount) || 0,
+  };
+}
+
+export function subscribeRide(rideId: string | null, onUpdate: (ride: Ride | null) => void) {
+  if (!rideId) {
+    onUpdate(null);
+    return () => {};
+  }
+  return onSnapshot(
+    doc(db, 'rides', rideId),
+    (snapshot) => onUpdate(snapshot.exists() ? parseRideDoc(snapshot.id, snapshot.data()) : null),
+    (error) => {
+      console.warn('Firestore ride error:', error);
+      onUpdate(null);
+    }
+  );
+}
+
+export function subscribeDriverRides(driverUid: string | null, onUpdate: (rides: Ride[]) => void) {
+  if (!driverUid) {
+    onUpdate([]);
+    return () => {};
+  }
+  const source = query(collection(db, 'rides'), where('driverUid', '==', driverUid));
+  return onSnapshot(
+    source,
+    (snapshot) => {
+      const rides = snapshot.docs.map((snap) => parseRideDoc(snap.id, snap.data()));
+      rides.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      onUpdate(rides);
+    },
+    (error) => {
+      console.warn('Firestore rides error:', error);
+      onUpdate([]);
+    }
+  );
+}
+
+export async function saveRide(ride: Ride) {
+  const ref = doc(db, 'rides', ride.id);
+  await setDoc(ref, sanitizeFirestoreData({ ...ride, updatedAt: new Date().toISOString() }), { merge: true });
+}
+
+export async function updateRideStatus(
+  rideId: string,
+  status: RideStatus,
+  extra: Partial<Ride> = {}
+) {
+  await setDoc(
+    doc(db, 'rides', rideId),
+    sanitizeFirestoreData({
+      ...extra,
+      status,
+      updatedAt: new Date().toISOString(),
+    }),
+    { merge: true }
+  );
+}
