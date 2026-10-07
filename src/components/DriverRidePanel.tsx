@@ -8,6 +8,7 @@ interface DriverRidePanelProps {
   isRidePaid: boolean;
   onStartRide: (price: number) => void;
   onEndRide: () => void;
+  passengerUrl?: string;
 }
 
 export const DriverRidePanel: React.FC<DriverRidePanelProps> = ({
@@ -16,6 +17,7 @@ export const DriverRidePanel: React.FC<DriverRidePanelProps> = ({
   isRidePaid,
   onStartRide,
   onEndRide,
+  passengerUrl,
 }) => {
   const [priceInput, setPriceInput] = useState(ridePrice > 0 ? String(ridePrice) : '');
 
@@ -65,6 +67,17 @@ export const DriverRidePanel: React.FC<DriverRidePanelProps> = ({
               </div>
             </div>
           </div>
+
+          {passengerUrl && (
+            <a
+              href={passengerUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="block rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-800 break-all"
+            >
+              Abrir link do passageiro desta corrida
+            </a>
+          )}
 
           <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3">
             <div>
