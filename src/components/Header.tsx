@@ -202,6 +202,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           {isPassenger && passengerSessionActive && onPassengerExit && (
             <button
+              data-testid="passenger-exit-button"
               onClick={onPassengerExit}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 font-bold transition-colors shadow-xs shrink-0 self-end"
               title="Sair da sessão do passageiro"
