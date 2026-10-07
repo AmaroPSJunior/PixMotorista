@@ -1,4 +1,4 @@
-export const PUBLIC_APP_URL = 'https://pagamento-pix-motorista.ai.studio';
+export const PUBLIC_APP_URL = 'https://pix-motorista.vercel.app';
 export const DEFAULT_DRIVER_EMAIL = 'arcamos.j@gmail.com';
 
 /**
@@ -101,7 +101,36 @@ export function getPublicPassengerUrl(customPublicUrl?: string, driverEmail?: st
 
   // Use current window origin if available, or fall back to production PUBLIC_APP_URL
   const baseUrl = (typeof window !== 'undefined' && window.location.origin) ? window.location.origin : PUBLIC_APP_URL;
-  return `${baseUrl}?view=passenger&driver=${encodeURIComponent(targetEmail)}`;
+  return `${baseUrl}/passageiro?driver=${encodeURIComponent(targetEmail)}`;
 }
 
 
+
+export type AppExperience = 'driver' | 'passenger';
+
+export function getExperienceFromUrl(): AppExperience {
+  if (typeof window === 'undefined') return 'passenger';
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  if (path === '/motorista') return 'driver';
+  return 'passenger';
+}
+
+export function getRideIdFromUrl(): string | null {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get('ride') || params.get('rideId');
+  return raw && raw.trim() ? raw.trim() : null;
+}
+
+export function navigateToExperience(experience: AppExperience, rideId?: string | null, driverEmail?: string): void {
+  if (typeof window === 'undefined') return;
+  const base = experience === 'driver' ? '/motorista' : '/passageiro';
+  const params = new URLSearchParams();
+  if (experience === 'passenger') {
+    if (rideId) params.set('ride', rideId);
+    if (driverEmail) params.set('driver', driverEmail);
+  }
+  const query = params.toString();
+  window.history.pushState({}, '', query ? `${base}?${query}` : base);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+}
