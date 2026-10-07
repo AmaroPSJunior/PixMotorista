@@ -7,6 +7,14 @@
     {
       "source": "/api/:path*",
       "destination": "/api?__path=:path*"
+    },
+    {
+      "source": "/motorista",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/passageiro",
+      "destination": "/index.html"
     }
   ]
 }
