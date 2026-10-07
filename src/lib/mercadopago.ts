@@ -66,13 +66,17 @@ export async function checkMercadoPagoPaymentStatus(paymentId: string): Promise<
   return await response.json();
 }
 
-export async function simulateMercadoPagoWebhook(paymentId: string, status: 'approved' | 'rejected' = 'approved'): Promise<{ success: boolean; message: string; payment: MercadoPagoPayment }> {
+export async function simulateMercadoPagoWebhook(
+  paymentId: string,
+  status: 'approved' | 'rejected' = 'approved',
+  context: { passengerSessionId?: string; serviceIds?: string[] } = {}
+): Promise<{ success: boolean; message: string; payment: MercadoPagoPayment }> {
   const response = await fetch('/api/mercadopago/test-webhook', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ paymentId, status }),
+    body: JSON.stringify({ paymentId, status, ...context }),
   });
 
   if (!response.ok) {
