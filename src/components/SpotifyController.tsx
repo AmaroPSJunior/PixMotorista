@@ -431,7 +431,7 @@ export const SpotifyController: React.FC<SpotifyControllerProps> = ({
 
     // Passenger View when Spotify credentials exist but the driver's Spotify session is not connected yet.
     return (
-      <section className="bg-slate-900 text-white rounded-2xl shadow-xl overflow-hidden border border-slate-800 p-6 text-center my-4">
+      <section data-testid="spotify-passenger-available" className="bg-slate-900 text-white rounded-2xl shadow-xl overflow-hidden border border-slate-800 p-6 text-center my-4">
         <div className="w-14 h-14 bg-emerald-500/10 border border-emerald-500/30 rounded-full flex items-center justify-center mx-auto mb-3 text-emerald-400">
           <Music className="w-7 h-7 animate-pulse" />
         </div>
@@ -446,6 +446,7 @@ export const SpotifyController: React.FC<SpotifyControllerProps> = ({
         </p>
         {onUnlockClick && (
           <button
+            data-testid="spotify-unlock-button"
             type="button"
             onClick={onUnlockClick}
             className="mt-5 w-full sm:w-auto px-6 py-3.5 bg-gradient-to-r from-sky-400 via-emerald-400 to-sky-400 hover:from-sky-300 hover:to-emerald-300 text-slate-950 font-black text-xs sm:text-sm rounded-xl transition-all shadow-xl shadow-sky-500/25 inline-flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
@@ -463,7 +464,7 @@ export const SpotifyController: React.FC<SpotifyControllerProps> = ({
 
   if (isLockedForPassenger) {
     return (
-      <section className="bg-slate-900 text-white rounded-2xl shadow-xl overflow-hidden border border-sky-500/40 p-5 my-4 animate-fadeIn">
+      <section data-testid="spotify-passenger-locked" className="bg-slate-900 text-white rounded-2xl shadow-xl overflow-hidden border border-sky-500/40 p-5 my-4 animate-fadeIn">
         <div className="bg-gradient-to-br from-slate-900 via-sky-950 to-slate-900 p-5 rounded-2xl border border-sky-500/30 text-center space-y-4 shadow-xl">
           <div className="w-14 h-14 bg-sky-500/20 border border-sky-400/40 text-sky-400 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-sky-500/20">
             <Lock className="w-7 h-7" />
@@ -483,6 +484,7 @@ export const SpotifyController: React.FC<SpotifyControllerProps> = ({
 
           <div className="pt-2">
             <button
+              data-testid="spotify-unlock-button"
               type="button"
               onClick={onUnlockClick}
               className="w-full sm:w-auto px-6 py-3.5 bg-gradient-to-r from-sky-400 via-emerald-400 to-sky-400 hover:from-sky-300 hover:to-emerald-300 text-slate-950 font-black text-xs sm:text-sm rounded-xl transition-all shadow-xl shadow-sky-500/25 flex items-center justify-center gap-2 mx-auto active:scale-95 cursor-pointer"
@@ -506,7 +508,7 @@ export const SpotifyController: React.FC<SpotifyControllerProps> = ({
   }
 
   return (
-    <section className="bg-slate-900 text-white rounded-2xl shadow-xl overflow-hidden border border-slate-800 transition-all">
+    <section data-testid="spotify-controller-unlocked" className="bg-slate-900 text-white rounded-2xl shadow-xl overflow-hidden border border-slate-800 transition-all">
       {/* Top Header Bar */}
       <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 p-4 border-b border-slate-800/80 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
