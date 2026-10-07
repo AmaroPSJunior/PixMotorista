@@ -633,136 +633,28 @@ export default function App() {
     setIsMpModalOpen(true);
   };
 
-  // Requirement 1 & 2: Unlock services (Wi-Fi, Spotify, etc.) and record purchased products on payment
+  // Payment effects are persisted only after the backend verifies Mercado Pago.
   const handlePaymentSuccess = async (payment: MercadoPagoPayment) => {
+    const approved = payment.status === 'approved' && Boolean(payment.paymentActivated);
+    if (!approved) return;
+
+    if (payment.rideId && currentRide && payment.rideId !== currentRide.id) {
+      console.warn('Pagamento aprovado pertence a outra corrida; ignorando atualização local.');
+      return;
+    }
+
     playPaymentSuccessSound();
-
-    const servicesToUnlock: string[] = [];
-    const productsToPurchase: Record<string, number> = {};
-
-    const desc = (payment.description || mpModalDescription || '').toLowerCase();
-    const isWifiPayment =
-      desc.includes('wi-fi') ||
-      desc.includes('wifi') ||
-      desc.includes('internet') ||
-      normalizeServiceId(payment.serviceId || '') === SERVICE_IDS.WIFI;
-
-    const isMusicPayment =
-      desc.includes('música') ||
-      desc.includes('spotify') ||
-      desc.includes('som') ||
-      normalizeServiceId(payment.serviceId || '') === SERVICE_IDS.MUSIC;
-
-    if (isWifiPayment) {
-      servicesToUnlock.push(SERVICE_IDS.WIFI);
-    }
-
-    if (isMusicPayment) {
-      servicesToUnlock.push(SERVICE_IDS.MUSIC);
-    }
-
-    // Separate selected items into Services (unlockable) vs Products (purchasable by quantity)
-    if (selectedServiceIds.length > 0) {
-      selectedServiceIds.forEach((id) => {
-        const found = services.find((s) => s.id === id);
-        if (found && getItemType(found) === 'produto') {
-          const qty = productQuantities[id] || 1;
-          productsToPurchase[id] = (productsToPurchase[id] || 0) + qty;
-        } else {
-          servicesToUnlock.push(normalizeServiceId(id));
-        }
-      });
-    }
-
-    const uniqueServicesToUnlock = normalizeServiceIds(servicesToUnlock);
-
-    let targetSession = currentPassengerSession || passengerSessions.find((s) => s.id === activeSessionId);
-
-    // Save purchased products if any
-    if (Object.keys(productsToPurchase).length > 0) {
-      saveLocalPurchasedProducts(productsToPurchase);
-      if (targetSession) {
-        recordPurchasedProductsToSession(
-          targetSession.id,
-          productsToPurchase,
-          targetSession.purchasedProducts || {}
-        );
-      }
-    }
-
-    if (uniqueServicesToUnlock.length > 0) {
-      // Save locally for instant client UI response
-      saveLocalUnlockedServices(uniqueServicesToUnlock);
-
-      // Sync with Firestore active session
-      if (targetSession) {
-        uniqueServicesToUnlock.forEach((sId) => {
-          toggleSessionServiceUnlock(
-            targetSession.id,
-            sId,
-            targetSession.unlockedServices,
-            true
-          );
-        });
-      } else {
-        // Create new session in Firestore if no active session exists
-        const authUid = await ensurePassengerAuth();
-        const newSessionId = registeredSessionId || `sess_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-        const newSession: PassengerSession = {
-          id: newSessionId,
-          passengerName: registeredName || 'Passageiro',
-          browserId: currentBrowserId,
-          createdAt: new Date().toISOString(),
-          lastActiveAt: new Date().toISOString(),
-          status: 'active',
-          unlockedServices: uniqueServicesToUnlock,
-          purchasedProducts: productsToPurchase,
-          hasMusicUnlocked: uniqueServicesToUnlock.includes(SERVICE_IDS.MUSIC),
-          paidAmount: payment.amount || 0,
-          paymentId: payment.paymentId || '',
-          authUid,
-        };
-        savePassengerSession(newSession);
-        try {
-          localStorage.setItem('pix_registered_session_id', newSessionId);
-        } catch (e) {
-          console.error(e);
-        }
-      }
-    }
-
-    // Reset selection cart after payment
     setSelectedServiceIds([]);
     setProductQuantities({});
-
-    // Mark ride as paid ONLY IF ridePrice was explicitly set (> 0) OR if description explicitly specifies ride/corrida
-    const isExplicitRidePayment =
-      ridePrice > 0 ||
-      desc.includes('corrida') ||
-      desc.includes('viagem') ||
-      desc.includes('trajeto');
-
-    if (isExplicitRidePayment) {
-      const paidVal = ridePrice || payment.amount || 0;
-      if (paidVal > 0) {
-        setLocalRidePaidState(true);
-        setLocalPaidRideAmount(paidVal);
-
-        let targetSession = currentPassengerSession || passengerSessions.find((s) => s.id === activeSessionId);
-        if (targetSession) {
-          savePassengerSession({
-            ...targetSession,
-            isRidePaid: true,
-            paidRideAmount: paidVal,
-          });
-        }
-      }
-    }
-
-    // Clear selected items, ride price, and tips after successful payment
-    setRidePrice(0);
-    setSelectedServiceIds([]);
     setSelectedTip(0);
+
+    if (payment.rideId && currentRide?.id === payment.rideId) {
+      setCurrentRide({
+        ...currentRide,
+        paymentStatus: currentRide.paymentStatus,
+        paymentId: payment.paymentId,
+      });
+    }
   };
 
   const handleResetDefaults = () => {
@@ -1064,6 +956,10 @@ export default function App() {
         totalAmount={mpModalAmount}
         description={mpModalDescription}
         selectedServicesCount={selectedServiceIds.length}
+        rideId={currentRide?.id || rideIdFromUrl}
+        passengerSessionId={currentPassengerSession?.id || activeSessionId}
+        serviceIds={selectedServiceIds}
+        productQuantities={productQuantities}
         onPaymentSuccess={handlePaymentSuccess}
       />
 
