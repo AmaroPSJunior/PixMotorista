@@ -202,6 +202,9 @@ async function clearSpotifySession() {
 
 // Helper to determine exact callback URL
 function getRedirectUri(req: express.Request): string {
+  if (process.env.SPOTIFY_REDIRECT_URI) {
+    return process.env.SPOTIFY_REDIRECT_URI.trim().replace(/\/$/, '');
+  }
   if (process.env.APP_URL) {
     const cleanAppUrl = process.env.APP_URL.replace(/\/$/, '');
     return `${cleanAppUrl}/auth/callback`;
