@@ -375,6 +375,7 @@ export default function App() {
   const displayPassengerName = currentPassengerSession?.passengerName || rawPassengerName || 'Passageiro';
   const handlePassengerExit = async () => {
     if (!currentPassengerSession) return;
+    setShowPassengerThanksModal(true);
     try {
       const token = await getCurrentIdToken();
       const response = await fetch('/api/passenger/session/close', {
@@ -390,10 +391,8 @@ export default function App() {
         throw new Error(payload.error || 'Não foi possível sair da sessão.');
       }
       setActiveSessionId(null);
-      setShowPassengerThanksModal(true);
     } catch (error: any) {
       console.error('Falha ao sair da sessão:', error);
-      setShowPassengerThanksModal(true);
     }
   };
 
@@ -907,27 +906,6 @@ export default function App() {
             </button>
           </section>
         </main>
-      {showPassengerThanksModal && viewMode === 'passenger' && (
-        <div className="fixed inset-0 z-[200] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-sm rounded-3xl bg-white border border-slate-200 shadow-2xl p-6 text-center">
-            <div className="w-14 h-14 mx-auto rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mb-4">
-              <span className="text-2xl">✓</span>
-            </div>
-            <h2 className="text-xl font-black text-slate-900">Obrigado pela viagem!</h2>
-            <p className="text-sm text-slate-500 mt-2">
-              Sua sessão foi encerrada. Esperamos ter ajudado a tornar sua viagem melhor.
-            </p>
-            <button
-              type="button"
-              onClick={handlePassengerThanksConfirm}
-              className="mt-5 w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 text-sm"
-            >
-              OK
-            </button>
-          </div>
-        </div>
-      )}
-
 
         <GoogleAuthModal
           isOpen={isGoogleAuthModalOpen}
@@ -1120,6 +1098,28 @@ export default function App() {
           </p>
         </footer>
       </main>
+      {showPassengerThanksModal && viewMode === 'passenger' && (
+        <div className="fixed inset-0 z-[200] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-3xl bg-white border border-slate-200 shadow-2xl p-6 text-center">
+            <div className="w-14 h-14 mx-auto rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mb-4">
+              <span className="text-2xl">✓</span>
+            </div>
+            <h2 className="text-xl font-black text-slate-900">Obrigado pela viagem!</h2>
+            <p className="text-sm text-slate-500 mt-2">
+              Sua sessão foi encerrada. Esperamos ter ajudado a tornar sua viagem melhor.
+            </p>
+            <button
+              type="button"
+              onClick={handlePassengerThanksConfirm}
+              className="mt-5 w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 text-sm"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
+
 
       {/* Floating total summary bar when passenger selects options */}
       <TotalSummaryBar
