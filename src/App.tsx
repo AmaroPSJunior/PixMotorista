@@ -795,7 +795,7 @@ export default function App() {
         </main>
         <GoogleAuthModal
           isOpen={isGoogleAuthModalOpen}
-          onClose={() => navigateToExperience('passageiro' as any)}
+          onClose={() => navigateToExperience('passenger')}
           onSuccess={handleGoogleLoginSuccess}
         />
       </DriverApp>
