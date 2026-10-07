@@ -429,20 +429,20 @@ export const SpotifyController: React.FC<SpotifyControllerProps> = ({
       );
     }
 
-    // Passenger View when Spotify is not connected yet:
+    // Passenger View when Spotify credentials exist but the driver's Spotify session is not connected yet.
     return (
       <section className="bg-slate-900 text-white rounded-2xl shadow-xl overflow-hidden border border-slate-800 p-6 text-center my-4">
         <div className="w-14 h-14 bg-emerald-500/10 border border-emerald-500/30 rounded-full flex items-center justify-center mx-auto mb-3 text-emerald-400">
           <Music className="w-7 h-7 animate-pulse" />
         </div>
         <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full inline-block mb-2 border border-emerald-500/30">
-          Serviço Em Breve
+          Recurso Disponível
         </span>
         <h3 className="text-lg font-extrabold text-white mb-1">
           Controle de Músicas no Carro (Spotify)
         </h3>
         <p className="text-slate-400 text-xs max-w-sm mx-auto leading-relaxed">
-          O serviço de escolha e controle de som no Spotify estará disponível em breve durante a sua viagem. O motorista irá liberar o controle assim que a conta do veículo for sincronizada.
+          O recurso já está disponível. Falta apenas o motorista conectar a conta do Spotify para liberar o controle durante a viagem.
         </p>
       </section>
     );
