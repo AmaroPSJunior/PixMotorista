@@ -16,6 +16,54 @@ const PORT = 3000;
 
 app.use(express.json());
 
+const CANONICAL_APP_URL = (process.env.CANONICAL_APP_URL || 'https://pix-motorista.vercel.app').replace(/\/$/, '');
+const LEGACY_BRIDGE_HOSTS = new Set([
+  'pagamento-pix-motorista.ai.studio',
+]);
+
+function isLegacyBridgeHost(req: express.Request): boolean {
+  const rawHost = (req.get('host') || '').toLowerCase();
+  const hostname = rawHost.split(':')[0];
+  return LEGACY_BRIDGE_HOSTS.has(hostname);
+}
+
+app.use('/api/mercadopago/webhook', async (req, res, next) => {
+  if (!isLegacyBridgeHost(req)) return next();
+
+  try {
+    const targetUrl = `${CANONICAL_APP_URL}${req.originalUrl}`;
+    const headers: Record<string, string> = {
+      'Content-Type': req.get('content-type') || 'application/json',
+      'X-Legacy-Bridge': 'google-ai-studio',
+    };
+
+    const signature = req.get('x-signature');
+    const requestId = req.get('x-request-id');
+    const userAgent = req.get('user-agent');
+    if (signature) headers['x-signature'] = signature;
+    if (requestId) headers['x-request-id'] = requestId;
+    if (userAgent) headers['user-agent'] = userAgent;
+
+    const upstream = await fetch(targetUrl, {
+      method: req.method,
+      headers,
+      body: ['GET', 'HEAD'].includes(req.method) ? undefined : JSON.stringify(req.body || {}),
+      redirect: 'manual',
+    });
+
+    const body = Buffer.from(await upstream.arrayBuffer());
+    const contentType = upstream.headers.get('content-type');
+    if (contentType) res.setHeader('content-type', contentType);
+    res.setHeader('x-legacy-bridge-target', CANONICAL_APP_URL);
+    return res.status(upstream.status).send(body);
+  } catch (error) {
+    console.error('Falha ao encaminhar webhook legado para a Vercel:', error);
+    return res.status(502).json({
+      error: 'Falha temporária ao encaminhar webhook para o ambiente principal.',
+    });
+  }
+});
+
 // Server-side Firestore uses Firebase Admin, which bypasses client security rules.
 // Configure FIREBASE_SERVICE_ACCOUNT_JSON or Application Default Credentials in production.
 let db: any = null;
