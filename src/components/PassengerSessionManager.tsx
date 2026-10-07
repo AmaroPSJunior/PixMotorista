@@ -224,18 +224,9 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
       });
   })();
 
-  // Filter sessions by logged in driver email or target email
-  const targetDriverEmail = (driverEmail || '').trim().toLowerCase();
-  const driverSessions = sessions.filter((s) => {
-    if (!targetDriverEmail) return true;
-    const sessionDriver = (s.driverEmail || '').trim().toLowerCase();
-    return (
-      !sessionDriver ||
-      sessionDriver === targetDriverEmail ||
-      sessionDriver === 'arcamos.j@gmail.com' ||
-      targetDriverEmail === 'arcamos.j@gmail.com'
-    );
-  });
+  // Temporary test mode: every driver can see every passenger session.
+  // Later this will be scoped by the QR-code relationship between driver and ride.
+  const driverSessions = sessions;
 
   const activeSessions = driverSessions.filter((s) => s.status === 'active');
   const expiredSessions = driverSessions.filter((s) => s.status === 'expired' || s.status === 'closed');
