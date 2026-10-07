@@ -246,13 +246,12 @@ export default function App() {
 
     const existing = passengerSessions.find(
       (session) =>
-        session.status === 'active' &&
         session.authUid === passengerAuthUid &&
         session.rideId === currentRide.id
     );
 
     if (existing) {
-      setActiveSessionId(existing.id);
+      setActiveSessionId(existing.status === 'active' ? existing.id : null);
       try {
         localStorage.setItem('pix_registered_session_id', existing.id);
       } catch {}
