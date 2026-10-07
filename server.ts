@@ -69,6 +69,7 @@ app.use('/api/mercadopago/webhook', async (req, res, next) => {
 // Configure FIREBASE_SERVICE_ACCOUNT_JSON or Application Default Credentials in production.
 let db: any = null;
 let adminAuth: any = null;
+let firebaseAdminInitError = '';
 try {
   const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
   if (fs.existsSync(configPath)) {
@@ -124,9 +125,19 @@ try {
 
     console.log('✅ Firestore Admin inicializado no servidor.');
   }
-} catch (e) {
+} catch (e: any) {
+  firebaseAdminInitError = e?.message || String(e);
   console.warn('Firestore Admin indisponível; persistência remota do servidor ficará desativada:', e);
 }
+
+app.get('/api/health/firebase', (_req, res) => {
+  res.json({
+    firestoreAdminReady: Boolean(db),
+    firebaseAuthAdminReady: Boolean(adminAuth),
+    hasServiceAccountEnv: Boolean((process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '').trim()),
+    initError: firebaseAdminInitError || null,
+  });
+});
 
 const doc = (database: any, collectionName: string, documentId: string) =>
   database.collection(collectionName).doc(documentId);
