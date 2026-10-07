@@ -170,10 +170,22 @@ export const MercadoPagoModal: React.FC<MercadoPagoModalProps> = ({
     if (!payment?.paymentId) return;
     setIsSimulating(true);
     try {
-      const res = await simulateMercadoPagoWebhook(payment.paymentId, 'approved');
+      const res = await simulateMercadoPagoWebhook(payment.paymentId, 'approved', {
+        passengerSessionId: passengerSessionId || undefined,
+        serviceIds,
+      });
       if (res?.payment) {
-        setPayment(res.payment);
-        if (onPaymentSuccess) onPaymentSuccess(res.payment);
+        const effectivePayment: MercadoPagoPayment = {
+          ...res.payment,
+          passengerSessionId: res.payment.passengerSessionId || passengerSessionId || undefined,
+          serviceIds:
+            Array.isArray(res.payment.serviceIds) && res.payment.serviceIds.length > 0
+              ? res.payment.serviceIds
+              : serviceIds,
+        };
+        setPayment(effectivePayment);
+        onPaymentSuccess?.(effectivePayment);
+        onClose();
       }
     } catch (e) {
       alert('Erro ao simular webhook Mercado Pago.');
