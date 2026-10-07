@@ -24,7 +24,7 @@ export default defineConfig({
   webServer: process.env.E2E_BASE_URL
     ? undefined
     : {
-        command: 'npm run dev',
+        command: 'npx vite --host 127.0.0.1 --port 4173',
         url: 'http://127.0.0.1:4173/passageiro',
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
