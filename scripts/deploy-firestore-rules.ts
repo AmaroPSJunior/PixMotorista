@@ -64,11 +64,18 @@ async function main() {
   }
 
   const releaseName = `projects/${projectId}/releases/cloud.firestore/${databaseId}`;
-  const releasePayload = { name: releaseName, ruleset_name: ruleset.name };
+  const releasePayload = { name: releaseName, rulesetName: ruleset.name };
 
   const releaseResponse = await fetch(
-    `https://firebaserules.googleapis.com/v1/${releaseName}?updateMask=ruleset_name`,
-    { method: 'PATCH', headers, body: JSON.stringify(releasePayload) }
+    `https://firebaserules.googleapis.com/v1/${releaseName}`,
+    {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({
+        release: releasePayload,
+        updateMask: 'rulesetName',
+      }),
+    }
   );
   const releaseBody = await releaseResponse.json() as any;
 
@@ -81,11 +88,11 @@ async function main() {
     { headers: { Authorization: `Bearer ${token}` } }
   );
   const verify = await verifyResponse.json() as any;
-  if (!verifyResponse.ok || (verify.rulesetName || verify.ruleset_name) !== ruleset.name) {
+  if (!verifyResponse.ok || verify.rulesetName !== ruleset.name) {
     throw new Error(`Rules verification failed: HTTP ${verifyResponse.status}`);
   }
 
-  console.log(`Firestore rules deployed and verified: ${(verify.rulesetName || verify.ruleset_name)}`);
+  console.log(`Firestore rules deployed and verified: ${verify.rulesetName}`);
 }
 
 main().catch((error) => {
