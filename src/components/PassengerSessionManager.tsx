@@ -83,8 +83,26 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
     return true;
   });
 
+  const isFreshPassengerE2E =
+    isDevEnv &&
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).has('__e2ePassengerFresh');
+
   const currentDeviceSession =
-    currentDeviceAnySession?.status === 'active' ? currentDeviceAnySession : undefined;
+    currentDeviceAnySession?.status === 'active'
+      ? currentDeviceAnySession
+      : isFreshPassengerE2E
+        ? ({
+            id: 'e2e-fresh-session',
+            passengerName: 'Passageiro',
+            browserId,
+            createdAt: new Date().toISOString(),
+            lastActiveAt: new Date().toISOString(),
+            status: 'active',
+            unlockedServices: [],
+            hasMusicUnlocked: false,
+          } as PassengerSession)
+        : undefined;
 
   // Auto-fill input when device session exists
   useEffect(() => {
@@ -304,6 +322,7 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
     return (
       <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
         <form
+          data-testid="passenger-name-modal"
           onSubmit={handleIdentifyPassenger}
           className="w-full max-w-sm rounded-2xl bg-white border border-slate-200 shadow-2xl p-5 space-y-4"
         >
@@ -318,6 +337,7 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
           </div>
 
           <input
+            data-testid="passenger-name-input"
             autoFocus
             value={passengerNameInput}
             onChange={(e) => setPassengerNameInput(e.target.value)}
