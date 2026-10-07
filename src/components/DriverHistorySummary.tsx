@@ -27,7 +27,7 @@ export const DriverHistorySummary: React.FC<DriverHistorySummaryProps> = ({ sess
   );
   const paidRides = todaySessions.filter((session) => session.isRidePaid).length;
   const extraItems = todaySessions.reduce((sum, session) => {
-    const products = Object.values(session.purchasedProducts || {}).reduce(
+    const products = (Object.values(session.purchasedProducts || {}) as number[]).reduce(
       (subtotal, quantity) => subtotal + Number(quantity || 0),
       0
     );
