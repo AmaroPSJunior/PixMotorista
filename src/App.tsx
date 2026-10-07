@@ -33,7 +33,7 @@ import {
   recordPurchasedProductsToSession,
 } from './lib/firebase';
 
-import { isDevEnvironment, getEffectiveDriverEmail, DEFAULT_DRIVER_EMAIL } from './utils/urlHelper';
+import { isDevEnvironment, getEffectiveDriverEmail, getExperienceFromUrl, navigateToExperience } from './utils/urlHelper';
 import { AuthenticatedDriver, ensurePassengerAuth, signOutDriver, subscribeDriverAuth } from './lib/auth';
 import { DriverApp } from './views/DriverApp';
 import { PassengerApp } from './views/PassengerApp';
@@ -108,16 +108,13 @@ export default function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [passengerAuthUid, setPassengerAuthUid] = useState<string | null>(null);
 
-  const [viewMode, setViewMode] = useState<'driver' | 'passenger'>(() => {
-    if (isDevEnv) {
-      if (typeof window !== 'undefined') {
-        const params = new URLSearchParams(window.location.search);
-        if (params.get('view') === 'passenger') return 'passenger';
-      }
-      return 'driver';
-    }
-    return 'passenger';
-  });
+  const [viewMode, setViewMode] = useState<'driver' | 'passenger'>(() => getExperienceFromUrl());
+
+  useEffect(() => {
+    const syncRoute = () => setViewMode(getExperienceFromUrl());
+    window.addEventListener('popstate', syncRoute);
+    return () => window.removeEventListener('popstate', syncRoute);
+  }, []);
 
   // Passengers use Firebase Anonymous Auth so Firestore can enforce per-session ownership
   // without asking the passenger to create an account.
@@ -705,12 +702,13 @@ export default function App() {
   const handleToggleViewMode = () => {
     if (viewMode === 'passenger') {
       if (!isGoogleAuthenticated) {
+        navigateToExperience('driver');
         setIsGoogleAuthModalOpen(true);
       } else {
-        setViewMode('driver');
+        navigateToExperience('driver');
       }
     } else {
-      setViewMode('passenger');
+      navigateToExperience('passenger', null, getEffectiveDriverEmail(driver.googleEmail));
     }
   };
 
@@ -755,7 +753,7 @@ export default function App() {
     }
 
     setIsGoogleAuthModalOpen(false);
-    setViewMode('driver');
+    navigateToExperience('driver');
   };
 
   const handleGoogleLogout = async () => {
@@ -766,7 +764,7 @@ export default function App() {
       localStorage.removeItem('pix_driver_google_auth');
       localStorage.removeItem('pix_driver_google_email');
       setDriver(DEFAULT_DRIVER_PROFILE);
-      setViewMode('passenger');
+      navigateToExperience('passenger', null, getEffectiveDriverEmail());
       setIsLogoutConfirmModalOpen(false);
     }
   };
