@@ -1422,6 +1422,59 @@ async function getMercadoPagoPaymentClient() {
   }
 }
 
+
+async function applyApprovedPaymentEffects(payment: any) {
+  if (!db || !payment?.paymentActivated || payment?.status !== 'approved') return;
+  const rideId = String(payment.rideId || '').trim();
+  const sessionId = String(payment.passengerSessionId || '').trim();
+  const serviceIds = Array.isArray(payment.serviceIds) ? payment.serviceIds.map((id: any) => String(id)).filter(Boolean) : [];
+  const productQuantities = payment.productQuantities && typeof payment.productQuantities === 'object' ? payment.productQuantities : {};
+  const includesRide = Boolean(payment.includesRide);
+
+  if (rideId) {
+    try {
+      const rideRef = doc(db, 'rides', rideId);
+      const rideSnap = await getDoc(rideRef);
+      const rideData = rideSnap.exists() ? rideSnap.data() || {} : {};
+      await setDoc(rideRef, {
+        paymentStatus: includesRide ? 'paid' : (rideData.paymentStatus || 'unpaid'),
+        paymentId: payment.paymentId,
+        paidAmount: includesRide ? Number(payment.amount) || 0 : Number(rideData.paidAmount) || 0,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    } catch (e) {
+      console.warn('Erro ao aplicar pagamento na corrida:', e);
+    }
+  }
+
+  if (sessionId) {
+    try {
+      const sessionRef = doc(db, 'passenger_sessions', sessionId);
+      const sessionSnap = await getDoc(sessionRef);
+      if (sessionSnap.exists()) {
+        const current = sessionSnap.data() || {};
+        const unlocked = Array.from(new Set([...(Array.isArray(current.unlockedServices) ? current.unlockedServices : []), ...serviceIds]));
+        const purchased = { ...(current.purchasedProducts || {}) };
+        for (const [id, qty] of Object.entries(productQuantities)) {
+          const amount = Math.max(0, Number(qty) || 0);
+          if (amount > 0) purchased[id] = (Number(purchased[id]) || 0) + amount;
+        }
+        await setDoc(sessionRef, {
+          unlockedServices: unlocked,
+          purchasedProducts: purchased,
+          hasMusicUnlocked: unlocked.includes('spotify_music'),
+          paymentId: payment.paymentId,
+          paidAmount: Number(payment.amount) || 0,
+          ...(includesRide ? { isRidePaid: true, paidRideAmount: Number(payment.amount) || 0 } : {}),
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+      }
+    } catch (e) {
+      console.warn('Erro ao aplicar pagamento na sessão do passageiro:', e);
+    }
+  }
+}
+
 // 1. Mercado Pago Config Status Endpoint
 app.get('/api/mercadopago/status', async (req, res) => {
   const token = await getMercadoPagoToken();
@@ -1453,8 +1506,21 @@ app.post('/api/mercadopago/save-config', (_req, res) => {
 // 2. Create Mercado Pago Pix Payment Charge
 app.post('/api/mercadopago/create-payment', async (req, res) => {
   try {
-    const { amount, transaction_amount, description, payer, serviceId, rideId } = req.body || {};
+    const {
+      amount, transaction_amount, description, payer, serviceId, rideId,
+      passengerSessionId, serviceIds, productQuantities,
+    } = req.body || {};
     const finalAmount = Number(amount || transaction_amount || 0);
+    const normalizedServiceIds = Array.isArray(serviceIds)
+      ? serviceIds.map((id: any) => String(id)).filter(Boolean)
+      : serviceId ? [String(serviceId)] : [];
+    const normalizedProductQuantities =
+      productQuantities && typeof productQuantities === 'object' ? productQuantities : {};
+    const normalizedDescription = String(description || '').toLowerCase();
+    const includesRide =
+      normalizedDescription.includes('corrida') ||
+      normalizedDescription.includes('viagem') ||
+      normalizedDescription.includes('trajeto');
 
     if (!finalAmount || finalAmount <= 0) {
       return res.status(400).json({ error: 'O valor da cobrança deve ser maior que zero.' });
@@ -1480,6 +1546,9 @@ app.post('/api/mercadopago/create-payment', async (req, res) => {
         metadata: {
           service_id: serviceId || '',
           ride_id: rideId || '',
+          passenger_session_id: passengerSessionId || '',
+          service_ids: normalizedServiceIds.join(','),
+          includes_ride: includesRide ? '1' : '0',
         },
       };
 
@@ -1512,7 +1581,11 @@ app.post('/api/mercadopago/create-payment', async (req, res) => {
           ticketUrl: mpResponse.point_of_interaction?.transaction_data?.ticket_url || '',
           payerEmail: mpResponse.payer?.email || payer?.email || '',
           serviceId: serviceId || '',
+          serviceIds: normalizedServiceIds,
+          productQuantities: normalizedProductQuantities,
           rideId: rideId || '',
+          passengerSessionId: passengerSessionId || '',
+          includesRide,
           isRealMercadoPago: true,
           paymentActivated: mpResponse.status === 'approved',
           createdAt: new Date().toISOString(),
@@ -1546,7 +1619,11 @@ app.post('/api/mercadopago/create-payment', async (req, res) => {
           ticketUrl: '',
           payerEmail: payer?.email || 'passageiro@email.com',
           serviceId: serviceId || '',
+          serviceIds: normalizedServiceIds,
+          productQuantities: normalizedProductQuantities,
           rideId: rideId || '',
+          passengerSessionId: passengerSessionId || '',
+          includesRide,
           isRealMercadoPago: false,
           paymentActivated: false,
           createdAt: new Date().toISOString(),
@@ -1633,7 +1710,15 @@ app.all('/api/mercadopago/webhook', async (req, res) => {
     }
 
     const mpPayment = await getMercadoPagoPaymentClient();
-    const existing = paymentStore[paymentId] || {};
+    let existing = paymentStore[paymentId] || {};
+    if (Object.keys(existing).length === 0 && db) {
+      try {
+        const stored = await getDoc(doc(db, 'pix_payments', String(paymentId)));
+        if (stored.exists()) existing = stored.data() || {};
+      } catch (e) {
+        console.warn('Erro ao recuperar contexto do pagamento no webhook:', e);
+      }
+    }
     let newStatus = existing.status || 'pending';
     let statusDetail = existing.statusDetail || 'pending_waiting_transfer';
     let verifiedFromMp = false;
@@ -1682,6 +1767,10 @@ app.all('/api/mercadopago/webhook', async (req, res) => {
       } catch (e) {
         console.warn('Erro ao atualizar Firestore via webhook:', e);
       }
+    }
+
+    if (isActivated) {
+      await applyApprovedPaymentEffects(updatedPayment);
     }
 
     res.status(200).json({
@@ -1735,6 +1824,9 @@ app.get('/api/mercadopago/payment-status/:id', async (req, res) => {
         paymentStore[paymentId] = payment;
         if (db) {
           await setDoc(doc(db, 'pix_payments', paymentId), payment, { merge: true });
+        }
+        if (payment.paymentActivated) {
+          await applyApprovedPaymentEffects(payment);
         }
       }
     } catch (e) {
