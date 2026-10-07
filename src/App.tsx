@@ -105,6 +105,7 @@ export default function App() {
 
   // Firebase Auth is authoritative. localStorage is never used as proof of identity.
   const [isGoogleAuthenticated, setIsGoogleAuthenticated] = useState<boolean>(false);
+  const [isAuthResolved, setIsAuthResolved] = useState<boolean>(false);
 
   // Passenger Sessions State
   const [passengerSessions, setPassengerSessions] = useState<PassengerSession[]>([]);
@@ -261,12 +262,14 @@ export default function App() {
     return subscribeDriverAuth(async (authenticatedUser) => {
       if (!authenticatedUser) {
         setIsGoogleAuthenticated(false);
+        setIsAuthResolved(true);
         localStorage.removeItem('pix_driver_google_auth');
         localStorage.removeItem('pix_driver_google_email');
         return;
       }
 
       setIsGoogleAuthenticated(true);
+      setIsAuthResolved(true);
       // Email is kept only as a convenience cache/target hint; Firebase Auth remains authoritative.
       localStorage.setItem('pix_driver_google_email', authenticatedUser.email);
 
@@ -752,6 +755,53 @@ export default function App() {
     }
   };
 
+  const activePassengerUrl = currentRide
+    ? getPublicPassengerUrl(driver.customPublicUrl, currentRide.driverEmail, currentRide.id)
+    : undefined;
+
+  useEffect(() => {
+    if (viewMode === 'driver' && isAuthResolved && !isGoogleAuthenticated) {
+      setIsGoogleAuthModalOpen(true);
+    }
+  }, [viewMode, isAuthResolved, isGoogleAuthenticated]);
+
+  if (viewMode === 'driver' && isAuthResolved && !isGoogleAuthenticated) {
+    return (
+      <DriverApp
+        header={
+          <Header
+            driver={driver}
+            onOpenEditModal={() => setIsGoogleAuthModalOpen(true)}
+            viewMode="driver"
+            onToggleViewMode={() => navigateToExperience('passenger')}
+            isDevEnv={true}
+          />
+        }
+      >
+        <main className="max-w-xl mx-auto px-4 mt-8">
+          <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 text-center">
+            <h2 className="font-black text-slate-900 text-lg">Área do motorista</h2>
+            <p className="text-sm text-slate-500 mt-2">
+              Faça login com sua Conta Google para acessar corridas, configurações e histórico.
+            </p>
+            <button
+              type="button"
+              onClick={() => setIsGoogleAuthModalOpen(true)}
+              className="mt-5 px-5 py-3 rounded-xl bg-slate-900 text-white text-sm font-black"
+            >
+              Entrar com Google
+            </button>
+          </section>
+        </main>
+        <GoogleAuthModal
+          isOpen={isGoogleAuthModalOpen}
+          onClose={() => navigateToExperience('passageiro' as any)}
+          onSuccess={handleGoogleLoginSuccess}
+        />
+      </DriverApp>
+    );
+  }
+
   const ExperienceApp = viewMode === 'driver' ? DriverApp : PassengerApp;
 
   return (
@@ -830,6 +880,7 @@ export default function App() {
             isRidePaid={isRidePaid}
             onStartRide={handleStartRide}
             onEndRide={handleEndRide}
+            passengerUrl={activePassengerUrl}
           />
         )}
 
