@@ -28,6 +28,27 @@ jobs:
       - name: Run Spotify payment E2E
         run: npm run test:e2e
 
+      - name: Backend/Firebase integration smoke
+        run: |
+          node - <<'NODE'
+          const base = 'https://pix-motorista.vercel.app';
+          const health = await fetch(base + '/api/health/firebase');
+          if (!health.ok) throw new Error('Firebase health endpoint failed: ' + health.status);
+          const body = await health.json();
+          if (!body.firestoreAdminReady || !body.firebaseAuthAdminReady || !body.hasServiceAccountEnv) {
+            throw new Error('Firebase Admin is not fully ready: ' + JSON.stringify(body));
+          }
+          const unauthorized = await fetch(base + '/api/passenger/session/close', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ sessionId: 'integration-probe' }),
+          });
+          if (unauthorized.status !== 401) {
+            throw new Error('Passenger close endpoint auth guard failed: ' + unauthorized.status);
+          }
+          console.log('Backend/Firebase integration smoke passed.');
+          NODE
+
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v4
