@@ -195,7 +195,7 @@ export const MercadoPagoModal: React.FC<MercadoPagoModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
+    <div data-testid="mercadopago-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
       <div className="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Modal Header */}
         <div className="p-5 border-b border-slate-800 bg-slate-950/60 flex items-center justify-between shrink-0">
@@ -394,6 +394,7 @@ export const MercadoPagoModal: React.FC<MercadoPagoModalProps> = ({
                   Quer testar a reação em tempo real do aplicativo sem abrir o app do banco? Clique para disparar uma confirmação de webhook simulada:
                 </p>
                 <button
+                  data-testid="simulate-webhook-button"
                   type="button"
                   onClick={handleSimulateWebhook}
                   disabled={isSimulating}
