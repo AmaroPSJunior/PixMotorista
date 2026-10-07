@@ -73,6 +73,9 @@ export interface MercadoPagoPayment {
   payerEmail?: string;
   serviceId?: string;
   rideId?: string;
+  passengerSessionId?: string;
+  serviceIds?: string[];
+  productQuantities?: Record<string, number>;
   paymentActivated?: boolean;
   activatedAt?: string;
   createdAt?: string;
