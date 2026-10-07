@@ -81,6 +81,26 @@ export interface MercadoPagoPayment {
   message?: string;
 }
 
+export type RideStatus = 'created' | 'active' | 'completed' | 'expired' | 'cancelled';
+export type RidePaymentStatus = 'unpaid' | 'pending' | 'paid';
+
+export interface Ride {
+  id: string;
+  driverUid: string;
+  driverEmail: string;
+  status: RideStatus;
+  paymentStatus: RidePaymentStatus;
+  price: number;
+  createdAt: string;
+  startedAt?: string;
+  endedAt?: string;
+  expiresAt?: string;
+  defaultUnlockedServices: string[];
+  passengerSessionId?: string;
+  paymentId?: string;
+  paidAmount?: number;
+}
+
 export interface PassengerSession {
   id: string;
   passengerName: string;
@@ -98,6 +118,8 @@ export interface PassengerSession {
   paidRideAmount?: number;
   ridePrice?: number;
   driverEmail?: string;
+  driverUid?: string;
+  rideId?: string;
   authUid?: string;
 }
 
