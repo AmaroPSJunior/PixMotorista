@@ -156,6 +156,7 @@ export default async function handler(req: any, res: any) {
   const query = params.toString();
   req.url = query ? route + '?' + query : route;
 
-  const { default: app } = await import('../server');
+  const mod: any = await import('../dist/server.cjs');
+  const app = mod.default?.default || mod.default || mod;
   return app(req, res);
 }
