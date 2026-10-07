@@ -76,10 +76,12 @@ service cloud.firestore {
     }
 
     match /passenger_sessions/{sessionId} {
+      // Temporary test mode: every authenticated driver may see every passenger session.
+      // Passenger accounts still only see their own session.
       allow read: if signedIn()
         && (
           ownsPassengerDocument()
-          || (('driverUid' in resource.data) && resource.data.driverUid == request.auth.uid)
+          || isDriverIdentity()
         );
 
       allow create: if signedIn()
@@ -110,18 +112,10 @@ service cloud.firestore {
             'browserId'
           ])
         )
-        || (
-          isDriverIdentity()
-          && ('driverUid' in resource.data)
-          && resource.data.driverUid == request.auth.uid
-        );
+        || isDriverIdentity();
 
       allow delete: if ownsPassengerDocument()
-        || (
-          isDriverIdentity()
-          && ('driverUid' in resource.data)
-          && resource.data.driverUid == request.auth.uid
-        );
+        || isDriverIdentity();
     }
 
     match /spotify_sessions/{document=**} {
