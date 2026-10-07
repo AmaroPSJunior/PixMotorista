@@ -18,10 +18,10 @@ export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
     define: {
-      'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
-      'import.meta.env.VITE_DEPLOY_SHA': JSON.stringify(deploySha),
-      'import.meta.env.VITE_DEPLOY_BUILD': JSON.stringify(deployBuild),
-      'import.meta.env.VITE_DEPLOYED_AT': JSON.stringify(deployedAt),
+      __APP_VERSION__: JSON.stringify(appVersion),
+      __DEPLOY_SHA__: JSON.stringify(deploySha),
+      __DEPLOY_BUILD__: JSON.stringify(deployBuild),
+      __DEPLOYED_AT__: JSON.stringify(deployedAt),
     },
     resolve: {
       alias: {
