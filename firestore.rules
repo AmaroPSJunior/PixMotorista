@@ -11,21 +11,24 @@ service cloud.firestore {
         && request.auth.token.email != null;
     }
 
-    function ownsMainDriverProfile() {
-      return isDriverIdentity()
-        && exists(/databases/$(database)/documents/driver_profiles/main_profile)
-        && ('authUid' in get(/databases/$(database)/documents/driver_profiles/main_profile).data)
-        && get(/databases/$(database)/documents/driver_profiles/main_profile).data.authUid == request.auth.uid;
-    }
-
     function ownsPassengerDocument() {
       return signedIn()
         && ('authUid' in resource.data)
         && resource.data.authUid == request.auth.uid;
     }
 
+    function ownsRide(rideId) {
+      return isDriverIdentity()
+        && exists(/databases/$(database)/documents/rides/$(rideId))
+        && get(/databases/$(database)/documents/rides/$(rideId)).data.driverUid == request.auth.uid;
+    }
+
+    function rideIsActive(rideId) {
+      return exists(/databases/$(database)/documents/rides/$(rideId))
+        && get(/databases/$(database)/documents/rides/$(rideId)).data.status == 'active';
+    }
+
     match /driver_profiles/{documentId} {
-      // The current public driver card is intentionally readable by passengers.
       allow read: if documentId == 'main_profile'
         || (signedIn() && resource.data.authUid == request.auth.uid);
 
@@ -47,33 +50,66 @@ service cloud.firestore {
         && resource.data.authUid == request.auth.uid;
     }
 
+    match /rides/{rideId} {
+      allow read: if signedIn()
+        && (
+          resource.data.driverUid == request.auth.uid
+          || resource.data.status == 'active'
+        );
+
+      allow create: if isDriverIdentity()
+        && request.resource.data.driverUid == request.auth.uid;
+
+      allow update, delete: if isDriverIdentity()
+        && resource.data.driverUid == request.auth.uid
+        && request.resource.data.driverUid == request.auth.uid;
+    }
+
     match /services/{serviceId} {
       allow read: if true;
-      allow write: if ownsMainDriverProfile();
+      allow write: if isDriverIdentity();
     }
 
     match /session_settings/{documentId} {
       allow read: if true;
-      allow write: if ownsMainDriverProfile();
+      allow write: if isDriverIdentity();
     }
 
     match /passenger_sessions/{sessionId} {
-      allow read: if ownsMainDriverProfile() || ownsPassengerDocument();
-
-      allow create: if signedIn()
-        && request.resource.data.authUid == request.auth.uid;
-
-      allow update: if ownsMainDriverProfile()
-        || (
+      allow read: if signedIn()
+        && (
           ownsPassengerDocument()
-          && request.resource.data.authUid == request.auth.uid
+          || (('driverUid' in resource.data) && resource.data.driverUid == request.auth.uid)
         );
 
-      allow delete: if ownsMainDriverProfile() || ownsPassengerDocument();
+      allow create: if signedIn()
+        && request.resource.data.authUid == request.auth.uid
+        && ('rideId' in request.resource.data)
+        && ('driverUid' in request.resource.data)
+        && rideIsActive(request.resource.data.rideId)
+        && get(/databases/$(database)/documents/rides/$(request.resource.data.rideId)).data.driverUid
+          == request.resource.data.driverUid;
+
+      allow update: if (
+          ownsPassengerDocument()
+          && request.resource.data.authUid == request.auth.uid
+          && request.resource.data.rideId == resource.data.rideId
+          && request.resource.data.driverUid == resource.data.driverUid
+        )
+        || (
+          isDriverIdentity()
+          && ('driverUid' in resource.data)
+          && resource.data.driverUid == request.auth.uid
+        );
+
+      allow delete: if ownsPassengerDocument()
+        || (
+          isDriverIdentity()
+          && ('driverUid' in resource.data)
+          && resource.data.driverUid == request.auth.uid
+        );
     }
 
-    // Tokens, payment records and provider credentials are server-only.
-    // The Express backend accesses these through Firebase Admin.
     match /spotify_sessions/{document=**} {
       allow read, write: if false;
     }
