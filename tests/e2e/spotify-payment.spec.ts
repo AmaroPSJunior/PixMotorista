@@ -7,9 +7,9 @@ test('passageiro paga/simula e Spotify é liberado imediatamente', async ({ page
       contentType: 'application/json',
       body: JSON.stringify({
         configured: true,
-        hasToken: true,
-        isIntegrated: true,
-        userProfile: { display_name: 'Motorista de Teste' },
+        hasToken: false,
+        isIntegrated: false,
+        userProfile: null,
       }),
     });
   });
@@ -97,4 +97,5 @@ test('passageiro paga/simula e Spotify é liberado imediatamente', async ({ page
   await expect(modal).toBeHidden();
   await expect(page.getByTestId('spotify-controller-unlocked')).toBeVisible();
   await expect(page.getByText('Músicas Liberadas!')).toBeVisible();
+  await expect(page.getByTestId('spotify-unlock-button')).toHaveCount(0);
 });
