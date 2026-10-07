@@ -30,7 +30,6 @@ import {
   toggleSessionServiceUnlock,
   saveSessionSettings,
 } from '../lib/firebase';
-import { ensurePassengerAuth } from '../lib/auth';
 import { normalizeServiceId, normalizeServiceIds, SERVICE_IDS } from '../domain/serviceIds';
 
 interface PassengerSessionManagerProps {
@@ -94,8 +93,10 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
     }
   }, [currentDeviceSession]);
 
-  // Periodic heartbeat / automatic expiration handler
+  // Only the authenticated driver may expire passenger sessions.
   useEffect(() => {
+    if (viewMode !== 'driver') return;
+
     const interval = setInterval(() => {
       const now = Date.now();
       const expireMs = settings.autoExpireMinutes * 60 * 1000;
@@ -104,51 +105,35 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
         if (session.status === 'active' && settings.autoExpireMinutes > 0) {
           const lastActiveMs = new Date(session.lastActiveAt).getTime();
           if (now - lastActiveMs > expireMs) {
-            // Automatically expire session
             updatePassengerSessionStatus(session.id, 'expired');
           }
         }
       });
-    }, 10000); // Check every 10 seconds
+    }, 10000);
 
     return () => clearInterval(interval);
-  }, [sessions, settings.autoExpireMinutes]);
+  }, [viewMode, sessions, settings.autoExpireMinutes]);
 
-  // Handler for passenger identification
+  // Passenger identification edits the already-authorized ride session only.
   const handleIdentifyPassenger = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const name = passengerNameInput.trim() || 'Passageiro(a)';
+    if (!currentDeviceSession) return;
 
-    const authUid = await ensurePassengerAuth();
-    const newSessionId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const name = passengerNameInput.trim() || 'Passageiro';
     const nowIso = new Date().toISOString();
 
-    const newSession: PassengerSession = {
-      id: newSessionId,
+    await savePassengerSession({
+      ...currentDeviceSession,
       passengerName: name,
-      browserId,
-      createdAt: nowIso,
       lastActiveAt: nowIso,
-      status: 'active',
-      unlockedServices: [],
-      hasMusicUnlocked: false,
-      authUid,
-    };
+    });
 
-    // Save local passenger identification for strict validation
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('pix_registered_passenger_name', name);
-      localStorage.setItem('pix_registered_session_id', newSessionId);
+      localStorage.setItem('pix_registered_session_id', currentDeviceSession.id);
     }
 
-    // Rule 1: Single Session vs Multi Passenger Mode
-    if (!settings.allowMultiPassengerMode) {
-      // Single session mode: automatically close all previous sessions
-      await closeAllPreviousPassengerSessionsExcept(newSessionId, undefined, authUid);
-    }
-
-    await savePassengerSession(newSession);
-    onSetActiveSessionId(newSessionId);
+    onSetActiveSessionId(currentDeviceSession.id);
     setIsEditingName(false);
   };
 
