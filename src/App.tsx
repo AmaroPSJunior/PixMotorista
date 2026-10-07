@@ -47,6 +47,7 @@ import { DriverHistorySummary } from './components/DriverHistorySummary';
 import { DriverRidePresets } from './components/DriverRidePresets';
 import { useRideSession } from './state/useRideSession';
 import { normalizeServiceId, normalizeServiceIds, SERVICE_IDS } from './domain/serviceIds';
+import { isPassengerCloseTerminalStatus } from './domain/businessRules';
 
 export default function App() {
   const isDevEnv = isDevEnvironment();
@@ -407,10 +408,18 @@ export default function App() {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ sessionId: currentPassengerSession!.id }),
+          body: JSON.stringify({
+            sessionId: currentPassengerSession!.id,
+            passengerName: currentPassengerSession!.passengerName,
+            browserId: currentPassengerSession!.browserId,
+            rideId: currentPassengerSession!.rideId || currentRide?.id || '',
+            driverUid: currentPassengerSession!.driverUid || currentRide?.driverUid || '',
+            driverEmail: currentPassengerSession!.driverEmail || currentRide?.driverEmail || '',
+            createdAt: currentPassengerSession!.createdAt,
+          }),
         });
         const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
+        if (!isPassengerCloseTerminalStatus(response.status)) {
           throw new Error(payload.error || 'Não foi possível encerrar a sessão.');
         }
       }
