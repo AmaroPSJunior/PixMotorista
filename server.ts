@@ -1902,27 +1902,51 @@ app.get('/api/mercadopago/payment-status/:id', async (req, res) => {
 
 // 5. Test Endpoint to Simulate Webhook Activation
 app.post('/api/mercadopago/test-webhook', async (req, res) => {
-  if (process.env.NODE_ENV === 'production') {
+  const simulationEnabled =
+    process.env.NODE_ENV !== 'production' ||
+    process.env.ALLOW_PAYMENT_SIMULATION === 'true';
+
+  if (!simulationEnabled) {
     return res.status(404).json({ error: 'Endpoint indisponível.' });
   }
 
   const { paymentId, status = 'approved' } = req.body || {};
   if (!paymentId) return res.status(400).json({ error: 'paymentId é obrigatório.' });
 
-  const existing = paymentStore[paymentId] || {};
+  let existing = paymentStore[paymentId] || {};
+
+  // Vercel is serverless: another invocation may have created the payment.
+  // Recover the payment context from Firestore before simulating its webhook.
+  if (Object.keys(existing).length === 0 && db) {
+    try {
+      const stored = await getDoc(doc(db, 'pix_payments', String(paymentId)));
+      if (stored.exists()) {
+        existing = stored.data() || {};
+      }
+    } catch (e) {
+      console.warn('Erro ao recuperar pagamento para simulação:', e);
+    }
+  }
+
+  if (Object.keys(existing).length === 0) {
+    return res.status(404).json({ error: 'Pagamento não encontrado para simulação.' });
+  }
+
   const isApproved = status === 'approved';
 
   const updated = {
     ...existing,
-    paymentId,
+    paymentId: String(paymentId),
     status,
-    statusDetail: 'accredited',
+    statusDetail: isApproved ? 'accredited' : status,
     paymentActivated: isApproved,
-    activatedAt: isApproved ? new Date().toISOString() : undefined,
+    verifiedFromMp: false,
+    simulated: true,
+    activatedAt: isApproved ? new Date().toISOString() : existing.activatedAt,
     updatedAt: new Date().toISOString(),
   };
 
-  paymentStore[paymentId] = updated;
+  paymentStore[String(paymentId)] = updated;
 
   if (db) {
     try {
@@ -1931,6 +1955,10 @@ app.post('/api/mercadopago/test-webhook', async (req, res) => {
     } catch (e) {
       console.warn('Erro ao atualizar test-webhook no Firestore:', e);
     }
+  }
+
+  if (isApproved) {
+    await applyApprovedPaymentEffects(updated);
   }
 
   res.json({
