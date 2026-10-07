@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPassengerClosedState, canDriverManageRide, canReactivatePassenger, isRideAccessible, isVerifiedPaymentForRide, PASSENGER_REACTIVATION_MS } from '../src/domain/businessRules';
+import { buildPassengerClosedState, canDriverManageRide, canReactivatePassenger, isPassengerCloseTerminalStatus, isRideAccessible, isVerifiedPaymentForRide, PASSENGER_REACTIVATION_MS } from '../src/domain/businessRules';
 import { Ride } from '../src/types';
 
 const baseRide: Ride = {
@@ -70,4 +70,14 @@ test('passenger close state keeps exactly 24h of reactivation history', () => {
     ),
     false
   );
+});
+
+
+test('404 from close is treated as already-closed logout, while auth/server errors are not', () => {
+  assert.equal(isPassengerCloseTerminalStatus(200), true);
+  assert.equal(isPassengerCloseTerminalStatus(204), true);
+  assert.equal(isPassengerCloseTerminalStatus(404), true);
+  assert.equal(isPassengerCloseTerminalStatus(401), false);
+  assert.equal(isPassengerCloseTerminalStatus(403), false);
+  assert.equal(isPassengerCloseTerminalStatus(500), false);
 });
