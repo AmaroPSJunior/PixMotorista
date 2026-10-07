@@ -1910,7 +1910,7 @@ app.post('/api/mercadopago/test-webhook', async (req, res) => {
     return res.status(404).json({ error: 'Endpoint indisponível.' });
   }
 
-  const { paymentId, status = 'approved' } = req.body || {};
+  const { paymentId, status = 'approved', passengerSessionId, serviceIds } = req.body || {};
   if (!paymentId) return res.status(400).json({ error: 'paymentId é obrigatório.' });
 
   let existing = paymentStore[paymentId] || {};
@@ -1942,6 +1942,14 @@ app.post('/api/mercadopago/test-webhook', async (req, res) => {
     paymentActivated: isApproved,
     verifiedFromMp: false,
     simulated: true,
+    passengerSessionId:
+      existing.passengerSessionId || (passengerSessionId ? String(passengerSessionId) : ''),
+    serviceIds:
+      Array.isArray(existing.serviceIds) && existing.serviceIds.length > 0
+        ? existing.serviceIds
+        : Array.isArray(serviceIds)
+          ? serviceIds.map((id: any) => String(id)).filter(Boolean)
+          : [],
     activatedAt: isApproved ? new Date().toISOString() : existing.activatedAt,
     updatedAt: new Date().toISOString(),
   };
