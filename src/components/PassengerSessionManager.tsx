@@ -287,23 +287,7 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
         currentDeviceSession.passengerName.trim().toLowerCase() === 'passageiro');
 
     if (!needsName) {
-      if (currentDeviceSession) {
-        return (
-          <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-black text-slate-800">Sessão do passageiro ativa</p>
-              <p className="text-[11px] text-slate-500">Você pode sair desta sessão a qualquer momento.</p>
-            </div>
-            <button
-              type="button"
-              onClick={handlePassengerExit}
-              className="shrink-0 px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black"
-            >
-              Sair
-            </button>
-          </section>
-        );
-      }
+      if (currentDeviceSession) return null;
 
       if (currentDeviceAnySession?.status === 'closed') {
         return (
