@@ -32,12 +32,13 @@ import {
   savePassengerSession,
   recordPurchasedProductsToSession,
   subscribeRide,
+  subscribeActiveRideForPassenger,
   subscribeDriverRides,
   saveRide,
   updateRideStatus,
 } from './lib/firebase';
 
-import { isDevEnvironment, getEffectiveDriverEmail, getExperienceFromUrl, getRideIdFromUrl, navigateToExperience, getPublicPassengerUrl } from './utils/urlHelper';
+import { isDevEnvironment, getDriverEmailFromUrl, getEffectiveDriverEmail, getExperienceFromUrl, getRideIdFromUrl, navigateToExperience, getPublicPassengerUrl } from './utils/urlHelper';
 import { AuthenticatedDriver, ensurePassengerAuth, signOutDriver, subscribeDriverAuth } from './lib/auth';
 import { DriverApp } from './views/DriverApp';
 import { PassengerApp } from './views/PassengerApp';
@@ -116,6 +117,7 @@ export default function App() {
   const [currentRide, setCurrentRide] = useState<Ride | null>(null);
   const [driverRides, setDriverRides] = useState<Ride[]>([]);
   const rideIdFromUrl = getRideIdFromUrl();
+  const driverEmailFromUrl = getDriverEmailFromUrl();
 
   const [viewMode, setViewMode] = useState<'driver' | 'passenger'>(() => getExperienceFromUrl());
 
@@ -127,15 +129,32 @@ export default function App() {
 
   useEffect(() => {
     if (viewMode === 'passenger') {
-      return subscribeRide(rideIdFromUrl, setCurrentRide);
+      if (!passengerAuthUid) {
+        setCurrentRide(null);
+        return () => {};
+      }
+      if (rideIdFromUrl) {
+        return subscribeRide(rideIdFromUrl, setCurrentRide);
+      }
+      return subscribeActiveRideForPassenger(setCurrentRide, {
+        driverUid: driver.authUid || null,
+        driverEmail: driverEmailFromUrl || driver.googleEmail || null,
+      });
     }
     return subscribeDriverRides(driver.authUid || null, (rides) => {
       setDriverRides(rides);
       const active = rides.find((ride) => ride.status === 'active') || null;
       setCurrentRide(active);
-      if (active) setActiveSessionId(active.passengerSessionId || null);
+      if (active?.passengerSessionId) setActiveSessionId(active.passengerSessionId);
     });
-  }, [viewMode, rideIdFromUrl, driver.authUid]);
+  }, [
+    viewMode,
+    rideIdFromUrl,
+    passengerAuthUid,
+    driver.authUid,
+    driver.googleEmail,
+    driverEmailFromUrl,
+  ]);
 
   // Passengers use Firebase Anonymous Auth so Firestore can enforce per-session ownership
   // without asking the passenger to create an account.
@@ -186,7 +205,7 @@ export default function App() {
         driverMode: viewMode === 'driver' && isGoogleAuthenticated,
         authUid: passengerAuthUid,
         driverUid: driver.authUid || null,
-        rideId: viewMode === 'passenger' ? rideIdFromUrl : null,
+        rideId: viewMode === 'passenger' ? (rideIdFromUrl || currentRide?.id || null) : null,
       }
     );
 
@@ -200,17 +219,16 @@ export default function App() {
       unsubSessions();
       unsubSettings();
     };
-  }, [driver.googleEmail, driver.authUid, isGoogleAuthenticated, viewMode, passengerAuthUid, rideIdFromUrl]);
+  }, [driver.googleEmail, driver.authUid, isGoogleAuthenticated, viewMode, passengerAuthUid, rideIdFromUrl, currentRide?.id]);
 
   // Passenger entry is frictionless, but only inside a valid active ride.
   useEffect(() => {
     if (
       viewMode !== 'passenger' ||
       !passengerAuthUid ||
-      !rideIdFromUrl ||
       !currentRide ||
-      currentRide.id !== rideIdFromUrl ||
-      currentRide.status !== 'active'
+      currentRide.status !== 'active' ||
+      (rideIdFromUrl && currentRide.id !== rideIdFromUrl)
     ) return;
 
     const existing = passengerSessions.find(
@@ -249,7 +267,6 @@ export default function App() {
     };
 
     savePassengerSession(session);
-    saveRide({ ...currentRide, passengerSessionId: sessionId });
     setActiveSessionId(sessionId);
     try {
       localStorage.setItem('pix_registered_session_id', sessionId);
@@ -280,28 +297,31 @@ export default function App() {
       localStorage.setItem('pix_driver_google_email', authenticatedUser.email);
 
       const foundProfile = await fetchDriverProfileByEmail(authenticatedUser.email);
-      if (foundProfile) {
-        setDriver({
-          ...foundProfile,
-          googleAuthenticated: true,
-          googleEmail: authenticatedUser.email,
-          authUid: authenticatedUser.uid,
-          name: foundProfile.name || authenticatedUser.name || 'Motorista Particular',
-          photoUrl: foundProfile.photoUrl || authenticatedUser.photoUrl || '',
-        });
-      } else {
-        setDriver({
-          ...DEFAULT_DRIVER_PROFILE,
-          name: authenticatedUser.name || 'Motorista Particular',
-          photoUrl: authenticatedUser.photoUrl || '',
-          googleAuthenticated: true,
-          googleEmail: authenticatedUser.email,
-          authUid: authenticatedUser.uid,
-          pixKey: authenticatedUser.email,
-          pixKeyType: 'email',
-          receiverName: (authenticatedUser.name || 'Motorista Particular').toUpperCase(),
-        });
-      }
+      const resolvedProfile: DriverProfile = foundProfile
+        ? {
+            ...foundProfile,
+            googleAuthenticated: true,
+            googleEmail: authenticatedUser.email,
+            authUid: authenticatedUser.uid,
+            name: foundProfile.name || authenticatedUser.name || 'Motorista Particular',
+            photoUrl: foundProfile.photoUrl || authenticatedUser.photoUrl || '',
+          }
+        : {
+            ...DEFAULT_DRIVER_PROFILE,
+            name: authenticatedUser.name || 'Motorista Particular',
+            photoUrl: authenticatedUser.photoUrl || '',
+            googleAuthenticated: true,
+            googleEmail: authenticatedUser.email,
+            authUid: authenticatedUser.uid,
+            pixKey: authenticatedUser.email,
+            pixKeyType: 'email',
+            receiverName: (authenticatedUser.name || 'Motorista Particular').toUpperCase(),
+          };
+
+      setDriver(resolvedProfile);
+      // Promote the authenticated driver's latest profile to main_profile so passenger
+      // devices receive the same driver/Pix data in real time.
+      await saveDriverProfile(resolvedProfile);
     });
   }, []);
 
@@ -321,7 +341,8 @@ export default function App() {
 
   const currentPassengerSession = passengerSessions.find((s) => {
     if (s.status !== 'active') return false;
-    if (rideIdFromUrl && s.rideId !== rideIdFromUrl) return false;
+    const effectiveRideId = rideIdFromUrl || currentRide?.id;
+    if (effectiveRideId && s.rideId !== effectiveRideId) return false;
     if (viewMode === 'passenger' && passengerAuthUid && s.authUid !== passengerAuthUid) return false;
     if (registeredSessionId && s.id === registeredSessionId) {
       return true;
