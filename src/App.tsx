@@ -814,7 +814,7 @@ export default function App() {
           onOpenMercadoPagoModal={() => setIsMercadoPagoSettingsModalOpen(true)}
           viewMode={viewMode}
           onToggleViewMode={handleToggleViewMode}
-          isDevEnv={isDevEnv}
+          isDevEnv={isDevEnv || viewMode === 'driver'}
           onGoogleLogout={() => setIsLogoutConfirmModalOpen(true)}
         />
       }
