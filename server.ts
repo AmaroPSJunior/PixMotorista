@@ -9,6 +9,7 @@ import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
 import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
 import QRCode from 'qrcode';
+import { buildPassengerClosedState } from './src/domain/businessRules';
 import firebaseClientConfig from './firebase-applet-config.json';
 
 dotenv.config();
@@ -118,6 +119,7 @@ try {
   db = firebaseConfig.firestoreDatabaseId
     ? getAdminFirestore(firebaseAdminApp, firebaseConfig.firestoreDatabaseId)
     : getAdminFirestore(firebaseAdminApp);
+  db.settings({ ignoreUndefinedProperties: true });
   adminAuth = getAdminAuth(firebaseAdminApp);
 
   console.log('✅ Firestore Admin inicializado no servidor.');
@@ -176,20 +178,14 @@ app.post('/api/passenger/session/close', async (req, res) => {
       return res.status(403).json({ error: 'Esta sessão pertence a outro passageiro.' });
     }
 
-    const now = new Date();
-    const reactivationExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    await ref.set({
-      status: 'closed',
-      closedAt: now.toISOString(),
-      reactivationExpiresAt: reactivationExpiresAt.toISOString(),
-      updatedAt: now.toISOString(),
-    }, { merge: true });
+    const closedState = buildPassengerClosedState(new Date());
+    await ref.set(closedState, { merge: true });
+    console.log(`✅ Sessão de passageiro ${sessionId} encerrada; reativação disponível até ${closedState.reactivationExpiresAt}.`);
 
     return res.json({
       success: true,
       sessionId,
-      status: 'closed',
-      reactivationExpiresAt: reactivationExpiresAt.toISOString(),
+      ...closedState,
     });
   } catch (error) {
     console.error('Erro ao encerrar sessão do passageiro:', error);
