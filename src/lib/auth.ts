@@ -73,6 +73,15 @@ export async function getCurrentIdToken(): Promise<string> {
 }
 
 
+export async function signOutPassenger(): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) return;
+  if (!user.isAnonymous) {
+    throw new Error('A sessão atual não é de passageiro.');
+  }
+  await signOut(auth);
+}
+
 export async function signOutDriver(): Promise<void> {
   await signOut(auth);
 }
