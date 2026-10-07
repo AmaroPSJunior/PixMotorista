@@ -88,6 +88,8 @@ export default function App() {
   const [isGoogleAuthModalOpen, setIsGoogleAuthModalOpen] = useState<boolean>(false);
   const [isLogoutConfirmModalOpen, setIsLogoutConfirmModalOpen] = useState<boolean>(false);
   const [isMercadoPagoSettingsModalOpen, setIsMercadoPagoSettingsModalOpen] = useState<boolean>(false);
+  const [showPassengerThanksModal, setShowPassengerThanksModal] = useState<boolean>(false);
+  const [forceNewPassengerSession, setForceNewPassengerSession] = useState<boolean>(false);
 
   // Mercado Pago Checkout Modal State
   const [isMpModalOpen, setIsMpModalOpen] = useState<boolean>(false);
@@ -250,7 +252,7 @@ export default function App() {
         session.rideId === currentRide.id
     );
 
-    if (existing) {
+    if (existing && !forceNewPassengerSession) {
       setActiveSessionId(existing.status === 'active' ? existing.id : null);
       try {
         localStorage.setItem('pix_registered_session_id', existing.id);
@@ -258,7 +260,9 @@ export default function App() {
       return;
     }
 
-    const sessionId = `sess_${currentRide.id}_${passengerAuthUid}`;
+    const sessionId = forceNewPassengerSession
+      ? `sess_${currentRide.id}_${passengerAuthUid}_${Date.now()}`
+      : `sess_${currentRide.id}_${passengerAuthUid}`;
     const nowIso = new Date().toISOString();
     const session: PassengerSession = {
       id: sessionId,
@@ -280,6 +284,7 @@ export default function App() {
 
     savePassengerSession(session);
     setActiveSessionId(sessionId);
+    setForceNewPassengerSession(false);
     try {
       localStorage.setItem('pix_registered_session_id', sessionId);
       localStorage.removeItem('pix_registered_passenger_name');
@@ -290,6 +295,7 @@ export default function App() {
     passengerSessions,
     currentRide,
     rideIdFromUrl,
+    forceNewPassengerSession,
   ]);
 
   // Restore the authenticated driver from Firebase Auth, never from localStorage.
@@ -384,9 +390,24 @@ export default function App() {
         throw new Error(payload.error || 'Não foi possível sair da sessão.');
       }
       setActiveSessionId(null);
+      setShowPassengerThanksModal(true);
     } catch (error: any) {
-      alert(error?.message || 'Não foi possível sair da sessão.');
+      console.error('Falha ao sair da sessão:', error);
+      setShowPassengerThanksModal(true);
     }
+  };
+
+  const handlePassengerThanksConfirm = () => {
+    try {
+      localStorage.removeItem('pix_registered_session_id');
+      localStorage.removeItem('pix_registered_passenger_name');
+      localStorage.removeItem('pix_music_unlocked');
+    } catch {}
+    setLocalUnlockedServices([]);
+    setIsMusicUnlocked(false);
+    setActiveSessionId(null);
+    setShowPassengerThanksModal(false);
+    setForceNewPassengerSession(true);
   };
 
 
@@ -886,6 +907,28 @@ export default function App() {
             </button>
           </section>
         </main>
+      {showPassengerThanksModal && viewMode === 'passenger' && (
+        <div className="fixed inset-0 z-[200] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-3xl bg-white border border-slate-200 shadow-2xl p-6 text-center">
+            <div className="w-14 h-14 mx-auto rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mb-4">
+              <span className="text-2xl">✓</span>
+            </div>
+            <h2 className="text-xl font-black text-slate-900">Obrigado pela viagem!</h2>
+            <p className="text-sm text-slate-500 mt-2">
+              Sua sessão foi encerrada. Esperamos ter ajudado a tornar sua viagem melhor.
+            </p>
+            <button
+              type="button"
+              onClick={handlePassengerThanksConfirm}
+              className="mt-5 w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 text-sm"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
+
         <GoogleAuthModal
           isOpen={isGoogleAuthModalOpen}
           onClose={() => navigateToExperience('passenger')}
