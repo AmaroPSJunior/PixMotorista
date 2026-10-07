@@ -437,6 +437,8 @@ export function subscribePassengerSessions(
           driverUid: data.driverUid || '',
           rideId: data.rideId || '',
           authUid: data.authUid || '',
+          closedAt: data.closedAt || undefined,
+          reactivationExpiresAt: data.reactivationExpiresAt || undefined,
         });
       });
       // Sort newest first
@@ -502,16 +504,18 @@ export async function closeAllPreviousPassengerSessionsExcept(
 // Update status of a specific passenger session
 export async function updatePassengerSessionStatus(
   sessionId: string,
-  status: 'active' | 'expired' | 'closed'
+  status: 'active' | 'expired' | 'closed',
+  extra: Partial<PassengerSession> = {}
 ) {
   try {
     const docRef = doc(db, 'passenger_sessions', sessionId);
     await setDoc(
       docRef,
-      {
+      sanitizeFirestoreData({
         status,
+        ...extra,
         updatedAt: new Date().toISOString(),
-      },
+      }),
       { merge: true }
     );
   } catch (error) {
