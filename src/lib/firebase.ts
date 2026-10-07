@@ -389,11 +389,16 @@ export async function saveSessionSettings(settings: SessionSettings) {
 // Subscribe to real-time list of all passenger sessions
 export function subscribePassengerSessions(
   onUpdate: (sessions: PassengerSession[]) => void,
-  options: { driverMode?: boolean; authUid?: string | null } = {}
+  options: {
+    driverMode?: boolean;
+    authUid?: string | null;
+    driverUid?: string | null;
+    rideId?: string | null;
+  } = {}
 ) {
   const colRef = collection(db, 'passenger_sessions');
-  const source = options.driverMode
-    ? colRef
+  const source = options.driverMode && options.driverUid
+    ? query(colRef, where('driverUid', '==', options.driverUid))
     : options.authUid
       ? query(colRef, where('authUid', '==', options.authUid))
       : null;
@@ -409,6 +414,7 @@ export function subscribePassengerSessions(
       const list: PassengerSession[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
+        if (options.rideId && data.rideId !== options.rideId) return;
         list.push({
           id: docSnap.id,
           passengerName: data.passengerName || 'Passageiro',
