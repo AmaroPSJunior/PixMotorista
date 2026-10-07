@@ -46,15 +46,7 @@ async function main() {
   };
   const source = { files: [{ name: 'firestore.rules', content }] };
 
-  const testResponse = await fetch(
-    `https://firebaserules.googleapis.com/v1/projects/${projectId}:test`,
-    { method: 'POST', headers, body: JSON.stringify({ source }) }
-  );
-  const testBody = await testResponse.json() as any;
-  if (!testResponse.ok) throw new Error(`Rules test failed: HTTP ${testResponse.status}`);
-  const errors = (testBody.issues || []).filter((issue: any) => issue.severity === 'ERROR');
-  if (errors.length) throw new Error(`Rules validation failed: ${JSON.stringify(errors)}`);
-
+  // Creating a ruleset performs Firebase Rules syntax/semantic validation.
   const rulesetResponse = await fetch(
     `https://firebaserules.googleapis.com/v1/projects/${projectId}/rulesets`,
     {
