@@ -221,6 +221,19 @@ export default function App() {
     };
   }, [driver.googleEmail, driver.authUid, isGoogleAuthenticated, viewMode, passengerAuthUid, rideIdFromUrl, currentRide?.id]);
 
+  useEffect(() => {
+    if (viewMode !== 'driver' || !currentRide) return;
+    const linkedSession = passengerSessions.find(
+      (session) =>
+        session.status === 'active' &&
+        session.rideId === currentRide.id &&
+        (!currentRide.driverUid || session.driverUid === currentRide.driverUid)
+    );
+    if (linkedSession && linkedSession.id !== activeSessionId) {
+      setActiveSessionId(linkedSession.id);
+    }
+  }, [viewMode, currentRide?.id, currentRide?.driverUid, passengerSessions, activeSessionId]);
+
   // Passenger entry is frictionless, but only inside a valid active ride.
   useEffect(() => {
     if (
