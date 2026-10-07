@@ -242,9 +242,49 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
       return timeB - timeA;
     });
 
-  // PASSENGER VIEW RENDERING: Do not render the "Passageiro na Viagem" card for passengers
+  // PASSENGER VIEW: ask for the passenger name when the current session is still generic.
   if (viewMode === 'passenger') {
-    return null;
+    const needsName =
+      Boolean(currentDeviceSession) &&
+      (!currentDeviceSession?.passengerName ||
+        currentDeviceSession.passengerName.trim().toLowerCase() === 'passageiro');
+
+    if (!needsName) return null;
+
+    return (
+      <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <form
+          onSubmit={handleIdentifyPassenger}
+          className="w-full max-w-sm rounded-2xl bg-white border border-slate-200 shadow-2xl p-5 space-y-4"
+        >
+          <div className="text-center">
+            <div className="w-12 h-12 mx-auto rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mb-3">
+              <UserCheck className="w-6 h-6" />
+            </div>
+            <h2 className="text-lg font-black text-slate-900">Como podemos te chamar?</h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Digite seu nome para o motorista identificar sua sessão.
+            </p>
+          </div>
+
+          <input
+            autoFocus
+            value={passengerNameInput}
+            onChange={(e) => setPassengerNameInput(e.target.value)}
+            placeholder="Seu nome"
+            className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+
+          <button
+            type="submit"
+            disabled={!passengerNameInput.trim()}
+            className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-300 disabled:text-slate-500 text-white font-black py-3 text-sm transition-colors"
+          >
+            Continuar
+          </button>
+        </form>
+      </div>
+    );
   }
 
   // DRIVER VIEW RENDERING
