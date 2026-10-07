@@ -13,7 +13,7 @@ import { MercadoPagoSettingsModal } from './components/MercadoPagoSettingsModal'
 import { MercadoPagoModal } from './components/MercadoPagoModal';
 import { LogoutConfirmModal } from './components/LogoutConfirmModal';
 import { DEFAULT_DRIVER_PROFILE, DEFAULT_SERVICES } from './data/defaultData';
-import { DriverProfile, AdditionalService, MercadoPagoPayment, PassengerSession, SessionSettings, getItemType } from './types';
+import { DriverProfile, AdditionalService, MercadoPagoPayment, PassengerSession, SessionSettings, Ride, getItemType } from './types';
 import { HelpCircle, ShieldCheck, Eye, Smartphone, ArrowRight, Sparkles, LogOut, Database, Users } from 'lucide-react';
 import { playPaymentSuccessSound } from './utils/audio';
 import { PassengerSessionManager } from './components/PassengerSessionManager';
@@ -31,9 +31,13 @@ import {
   toggleSessionServiceUnlock,
   savePassengerSession,
   recordPurchasedProductsToSession,
+  subscribeRide,
+  subscribeDriverRides,
+  saveRide,
+  updateRideStatus,
 } from './lib/firebase';
 
-import { isDevEnvironment, getEffectiveDriverEmail, getExperienceFromUrl, navigateToExperience } from './utils/urlHelper';
+import { isDevEnvironment, getEffectiveDriverEmail, getExperienceFromUrl, getRideIdFromUrl, navigateToExperience, getPublicPassengerUrl } from './utils/urlHelper';
 import { AuthenticatedDriver, ensurePassengerAuth, signOutDriver, subscribeDriverAuth } from './lib/auth';
 import { DriverApp } from './views/DriverApp';
 import { PassengerApp } from './views/PassengerApp';
@@ -107,6 +111,9 @@ export default function App() {
   const [sessionSettings, setSessionSettings] = useState<SessionSettings>(DEFAULT_SESSION_SETTINGS);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [passengerAuthUid, setPassengerAuthUid] = useState<string | null>(null);
+  const [currentRide, setCurrentRide] = useState<Ride | null>(null);
+  const [driverRides, setDriverRides] = useState<Ride[]>([]);
+  const rideIdFromUrl = getRideIdFromUrl();
 
   const [viewMode, setViewMode] = useState<'driver' | 'passenger'>(() => getExperienceFromUrl());
 
@@ -115,6 +122,18 @@ export default function App() {
     window.addEventListener('popstate', syncRoute);
     return () => window.removeEventListener('popstate', syncRoute);
   }, []);
+
+  useEffect(() => {
+    if (viewMode === 'passenger') {
+      return subscribeRide(rideIdFromUrl, setCurrentRide);
+    }
+    return subscribeDriverRides(driver.authUid || null, (rides) => {
+      setDriverRides(rides);
+      const active = rides.find((ride) => ride.status === 'active') || null;
+      setCurrentRide(active);
+      if (active) setActiveSessionId(active.passengerSessionId || null);
+    });
+  }, [viewMode, rideIdFromUrl, driver.authUid]);
 
   // Passengers use Firebase Anonymous Auth so Firestore can enforce per-session ownership
   // without asking the passenger to create an account.
@@ -159,6 +178,8 @@ export default function App() {
       {
         driverMode: viewMode === 'driver' && isGoogleAuthenticated,
         authUid: passengerAuthUid,
+        driverUid: driver.authUid || null,
+        rideId: viewMode === 'passenger' ? rideIdFromUrl : null,
       }
     );
 
@@ -172,14 +193,24 @@ export default function App() {
       unsubSessions();
       unsubSettings();
     };
-  }, [driver.googleEmail, isGoogleAuthenticated, viewMode, passengerAuthUid]);
+  }, [driver.googleEmail, driver.authUid, isGoogleAuthenticated, viewMode, passengerAuthUid, rideIdFromUrl]);
 
-  // Passenger entry is frictionless: create/reuse one secure anonymous session automatically.
+  // Passenger entry is frictionless, but only inside a valid active ride.
   useEffect(() => {
-    if (viewMode !== 'passenger' || !passengerAuthUid) return;
+    if (
+      viewMode !== 'passenger' ||
+      !passengerAuthUid ||
+      !rideIdFromUrl ||
+      !currentRide ||
+      currentRide.id !== rideIdFromUrl ||
+      currentRide.status !== 'active'
+    ) return;
 
     const existing = passengerSessions.find(
-      (session) => session.status === 'active' && session.authUid === passengerAuthUid
+      (session) =>
+        session.status === 'active' &&
+        session.authUid === passengerAuthUid &&
+        session.rideId === currentRide.id
     );
 
     if (existing) {
@@ -190,7 +221,7 @@ export default function App() {
       return;
     }
 
-    const sessionId = `sess_${passengerAuthUid}`;
+    const sessionId = `sess_${currentRide.id}_${passengerAuthUid}`;
     const nowIso = new Date().toISOString();
     const session: PassengerSession = {
       id: sessionId,
@@ -199,15 +230,19 @@ export default function App() {
       createdAt: nowIso,
       lastActiveAt: nowIso,
       status: 'active',
-      unlockedServices: normalizeServiceIds(sessionSettings.defaultUnlockedServices || []),
+      unlockedServices: normalizeServiceIds(currentRide.defaultUnlockedServices || []),
       hasMusicUnlocked: normalizeServiceIds(
-        sessionSettings.defaultUnlockedServices || []
+        currentRide.defaultUnlockedServices || []
       ).includes(SERVICE_IDS.MUSIC),
-      driverEmail: getEffectiveDriverEmail(driver.googleEmail),
+      ridePrice: currentRide.price,
+      rideId: currentRide.id,
+      driverUid: currentRide.driverUid,
+      driverEmail: currentRide.driverEmail,
       authUid: passengerAuthUid,
     };
 
     savePassengerSession(session);
+    saveRide({ ...currentRide, passengerSessionId: sessionId });
     setActiveSessionId(sessionId);
     try {
       localStorage.setItem('pix_registered_session_id', sessionId);
@@ -217,8 +252,8 @@ export default function App() {
     viewMode,
     passengerAuthUid,
     passengerSessions,
-    sessionSettings.defaultUnlockedServices,
-    driver.googleEmail,
+    currentRide,
+    rideIdFromUrl,
   ]);
 
   // Restore the authenticated driver from Firebase Auth, never from localStorage.
