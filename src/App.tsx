@@ -92,6 +92,7 @@ export default function App() {
   const [isMpModalOpen, setIsMpModalOpen] = useState<boolean>(false);
   const [mpModalAmount, setMpModalAmount] = useState<number>(0);
   const [mpModalDescription, setMpModalDescription] = useState<string>('Serviços de Corrida Moto / Extras');
+  const [mpModalServiceIds, setMpModalServiceIds] = useState<string[]>([]);
 
   const saveLocalUnlockedServices = (newServices: string[]) => {
     setLocalUnlockedServices((prev) =>
@@ -633,11 +634,18 @@ export default function App() {
   };
 
   // Requirement 3: Generate Mercado Pago QR code on click
-  const handleOpenMercadoPagoModal = (amount?: number, description?: string) => {
+  const handleOpenMercadoPagoModal = (
+    amount?: number,
+    description?: string,
+    serviceIdsOverride?: string[]
+  ) => {
     const finalAmt = amount !== undefined && amount > 0 ? amount : (totalAmount > 0 ? totalAmount : 2.0);
     const finalDesc = description || (selectedServiceIds.length > 0 ? 'Pagamento de Adicionais Selecionados' : 'Escolha de Músicas no Som do Veículo');
     setMpModalAmount(finalAmt);
     setMpModalDescription(finalDesc);
+    setMpModalServiceIds(
+      normalizeServiceIds(serviceIdsOverride && serviceIdsOverride.length > 0 ? serviceIdsOverride : selectedServiceIds)
+    );
     setIsMpModalOpen(true);
   };
 
@@ -651,10 +659,35 @@ export default function App() {
       return;
     }
 
+    const unlockedFromPayment = normalizeServiceIds(payment.serviceIds || []);
+
     playPaymentSuccessSound();
+    saveLocalUnlockedServices(unlockedFromPayment);
+
+    if (payment.passengerSessionId && unlockedFromPayment.length > 0) {
+      setPassengerSessions((prev) =>
+        prev.map((session) =>
+          session.id === payment.passengerSessionId
+            ? {
+                ...session,
+                unlockedServices: normalizeServiceIds([
+                  ...session.unlockedServices,
+                  ...unlockedFromPayment,
+                ]),
+                hasMusicUnlocked:
+                  session.hasMusicUnlocked ||
+                  unlockedFromPayment.includes(SERVICE_IDS.MUSIC),
+              }
+            : session
+        )
+      );
+    }
+
     setSelectedServiceIds([]);
     setProductQuantities({});
     setSelectedTip(0);
+    setMpModalServiceIds([]);
+    setIsMpModalOpen(false);
 
     if (payment.rideId && currentRide?.id === payment.rideId) {
       setCurrentRide({
@@ -950,7 +983,8 @@ export default function App() {
             onUnlockClick={() =>
               handleOpenMercadoPagoModal(
                 2.0,
-                'Liberação do Serviço de Escolha de Músicas no Som do Veículo'
+                'Liberação do Serviço de Escolha de Músicas no Som do Veículo',
+                [SERVICE_IDS.MUSIC]
               )
             }
           />
@@ -1014,7 +1048,7 @@ export default function App() {
         selectedServicesCount={selectedServiceIds.length}
         rideId={currentRide?.id || rideIdFromUrl}
         passengerSessionId={currentPassengerSession?.id || activeSessionId}
-        serviceIds={selectedServiceIds}
+        serviceIds={mpModalServiceIds}
         productQuantities={productQuantities}
         onPaymentSuccess={handlePaymentSuccess}
       />
