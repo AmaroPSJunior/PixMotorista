@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canDriverManageRide, isRideAccessible, isVerifiedPaymentForRide } from '../src/domain/businessRules';
+import { buildPassengerClosedState, canDriverManageRide, canReactivatePassenger, isRideAccessible, isVerifiedPaymentForRide, PASSENGER_REACTIVATION_MS } from '../src/domain/businessRules';
 import { Ride } from '../src/types';
 
 const baseRide: Ride = {
@@ -44,4 +44,30 @@ test('payment must be approved, activated and scoped to ride/session', () => {
   assert.equal(isVerifiedPaymentForRide({ ...payment, paymentActivated: false }, 'ride_1', 'sess_1'), false);
   assert.equal(isVerifiedPaymentForRide(payment, 'ride_2', 'sess_1'), false);
   assert.equal(isVerifiedPaymentForRide(payment, 'ride_1', 'sess_2'), false);
+});
+
+
+test('passenger close state keeps exactly 24h of reactivation history', () => {
+  const now = new Date('2026-10-07T16:00:00.000Z');
+  const closed = buildPassengerClosedState(now);
+  assert.equal(closed.status, 'closed');
+  assert.equal(closed.closedAt, now.toISOString());
+  assert.equal(
+    new Date(closed.reactivationExpiresAt).getTime() - now.getTime(),
+    PASSENGER_REACTIVATION_MS
+  );
+  assert.equal(
+    canReactivatePassenger(
+      { createdAt: now.toISOString(), reactivationExpiresAt: closed.reactivationExpiresAt },
+      now.getTime() + PASSENGER_REACTIVATION_MS
+    ),
+    true
+  );
+  assert.equal(
+    canReactivatePassenger(
+      { createdAt: now.toISOString(), reactivationExpiresAt: closed.reactivationExpiresAt },
+      now.getTime() + PASSENGER_REACTIVATION_MS + 1
+    ),
+    false
+  );
 });
