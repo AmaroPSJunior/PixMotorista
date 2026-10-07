@@ -66,19 +66,11 @@ async function main() {
   const releaseName = `projects/${projectId}/releases/cloud.firestore/${databaseId}`;
   const releasePayload = { name: releaseName, rulesetName: ruleset.name };
 
-  let releaseResponse = await fetch(
-    `https://firebaserules.googleapis.com/v1/projects/${projectId}/releases`,
-    { method: 'POST', headers, body: JSON.stringify(releasePayload) }
+  const releaseResponse = await fetch(
+    `https://firebaserules.googleapis.com/v1/${releaseName}?updateMask=rulesetName`,
+    { method: 'PATCH', headers, body: JSON.stringify(releasePayload) }
   );
-  let releaseBody = await releaseResponse.json() as any;
-
-  if (releaseResponse.status === 409) {
-    releaseResponse = await fetch(
-      `https://firebaserules.googleapis.com/v1/${releaseName}?updateMask=rulesetName`,
-      { method: 'PATCH', headers, body: JSON.stringify(releasePayload) }
-    );
-    releaseBody = await releaseResponse.json() as any;
-  }
+  const releaseBody = await releaseResponse.json() as any;
 
   if (!releaseResponse.ok) {
     throw new Error(`Rules release failed: HTTP ${releaseResponse.status} ${JSON.stringify(releaseBody)}`);
