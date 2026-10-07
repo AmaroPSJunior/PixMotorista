@@ -617,6 +617,34 @@ export function subscribeRide(rideId: string | null, onUpdate: (ride: Ride | nul
   );
 }
 
+export function subscribeActiveRideForPassenger(
+  onUpdate: (ride: Ride | null) => void,
+  options: { driverUid?: string | null; driverEmail?: string | null } = {}
+) {
+  const source = query(collection(db, 'rides'), where('status', '==', 'active'));
+  return onSnapshot(
+    source,
+    (snapshot) => {
+      const targetUid = (options.driverUid || '').trim();
+      const targetEmail = (options.driverEmail || '').trim().toLowerCase();
+      const rides = snapshot.docs
+        .map((snap) => parseRideDoc(snap.id, snap.data()))
+        .filter((ride) => {
+          if (targetUid) return ride.driverUid === targetUid;
+          if (targetEmail) return ride.driverEmail.trim().toLowerCase() === targetEmail;
+          return true;
+        })
+        .sort((a, b) => new Date(b.startedAt || b.createdAt).getTime() - new Date(a.startedAt || a.createdAt).getTime());
+
+      onUpdate(rides[0] || null);
+    },
+    (error) => {
+      console.warn('Firestore active passenger ride error:', error);
+      onUpdate(null);
+    }
+  );
+}
+
 export function subscribeDriverRides(driverUid: string | null, onUpdate: (rides: Ride[]) => void) {
   if (!driverUid) {
     onUpdate([]);
