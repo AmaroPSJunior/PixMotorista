@@ -162,8 +162,13 @@ export default function App() {
   // Real-time synchronization with Firebase Firestore
   useEffect(() => {
     // Priority: URL query param (?driver=...) -> logged-in Google email -> default printed QR code (arcamos.j@gmail.com)
-    const activeEmail = getEffectiveDriverEmail(driver.googleEmail);
+    const activeEmail =
+      viewMode === 'driver'
+        ? getEffectiveDriverEmail(driver.googleEmail)
+        : undefined;
 
+    // Temporary test mode: passengers see the latest connected driver's public profile.
+    // Later this will be scoped by the QR-code / ride relationship.
     const unsubDriver = subscribeDriverProfile((profile) => {
       setDriver(profile);
     }, activeEmail);
