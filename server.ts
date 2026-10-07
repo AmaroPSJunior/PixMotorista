@@ -169,22 +169,70 @@ app.post('/api/passenger/session/close', async (req, res) => {
     const sessionId = String(req.body?.sessionId || '').trim();
     if (!sessionId) return res.status(400).json({ error: 'sessionId obrigatório.' });
 
-    const ref = doc(db, 'passenger_sessions', sessionId);
-    const snapshot = await ref.get();
-    if (!snapshot.exists) return res.status(404).json({ error: 'Sessão não encontrada.' });
+    const requestedRef = doc(db, 'passenger_sessions', sessionId);
+    const requestedSnapshot = await requestedRef.get();
+    const requestedSession = requestedSnapshot.exists ? (requestedSnapshot.data() || {}) : null;
 
-    const session = snapshot.data() || {};
-    if (session.authUid !== decoded.uid) {
+    if (requestedSession && requestedSession.authUid && requestedSession.authUid !== decoded.uid) {
       return res.status(403).json({ error: 'Esta sessão pertence a outro passageiro.' });
     }
 
+    const ownedSessionsSnapshot = await db
+      .collection('passenger_sessions')
+      .where('authUid', '==', decoded.uid)
+      .get();
+
     const closedState = buildPassengerClosedState(new Date());
-    await ref.set(closedState, { merge: true });
-    console.log(`✅ Sessão de passageiro ${sessionId} encerrada; reativação disponível até ${closedState.reactivationExpiresAt}.`);
+    const batch = db.batch();
+    const closedSessionIds = new Set<string>();
+
+    ownedSessionsSnapshot.forEach((ownedDoc: any) => {
+      const data = ownedDoc.data() || {};
+      if (data.status === 'active' || ownedDoc.id === sessionId) {
+        batch.set(ownedDoc.ref, closedState, { merge: true });
+        closedSessionIds.add(ownedDoc.id);
+      }
+    });
+
+    if (!requestedSnapshot.exists) {
+      batch.set(
+        requestedRef,
+        {
+          authUid: decoded.uid,
+          passengerName: String(req.body?.passengerName || 'Passageiro').trim() || 'Passageiro',
+          browserId: String(req.body?.browserId || '').trim(),
+          rideId: String(req.body?.rideId || '').trim(),
+          driverUid: String(req.body?.driverUid || '').trim(),
+          driverEmail: String(req.body?.driverEmail || '').trim(),
+          createdAt: String(req.body?.createdAt || closedState.closedAt),
+          lastActiveAt: closedState.closedAt,
+          unlockedServices: [],
+          hasMusicUnlocked: false,
+          ...closedState,
+        },
+        { merge: true }
+      );
+      closedSessionIds.add(sessionId);
+    } else if (!closedSessionIds.has(sessionId)) {
+      batch.set(requestedRef, closedState, { merge: true });
+      closedSessionIds.add(sessionId);
+    }
+
+    await batch.commit();
+
+    console.log(
+      '✅ Logout do passageiro concluído para UID ' +
+        decoded.uid +
+        '; sessões encerradas: ' +
+        Array.from(closedSessionIds).join(', ') +
+        '.'
+    );
 
     return res.json({
       success: true,
       sessionId,
+      closedSessionIds: Array.from(closedSessionIds),
+      recoveredMissingSession: !requestedSnapshot.exists,
       ...closedState,
     });
   } catch (error) {
