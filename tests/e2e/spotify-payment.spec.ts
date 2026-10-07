@@ -99,3 +99,39 @@ test('passageiro paga/simula e Spotify é liberado imediatamente', async ({ page
   await expect(page.getByText('Músicas Liberadas!')).toBeVisible();
   await expect(page.getByTestId('spotify-unlock-button')).toHaveCount(0);
 });
+
+
+test('passageiro encerra sessão e volta para cadastro de novo nome', async ({ page }) => {
+  await page.route('**/api/spotify/status', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ configured: true, hasToken: false, isIntegrated: false, userProfile: null }),
+    });
+  });
+
+  await page.goto('/passageiro?__e2ePassengerExit=1');
+
+  const exitButton = page.getByTestId('passenger-exit-button');
+  await expect(exitButton).toBeVisible();
+  await exitButton.click();
+
+  const thanksModal = page.getByTestId('passenger-thanks-modal');
+  await expect(thanksModal).toBeVisible();
+  await expect(page.getByText('Obrigado pela viagem!')).toBeVisible();
+
+  await page.getByTestId('passenger-thanks-ok').click();
+
+  await expect(thanksModal).toBeHidden();
+  await expect(page.getByTestId('passenger-name-modal')).toBeVisible();
+  await expect(page.getByText('Como podemos te chamar?')).toBeVisible();
+  await expect(page.getByTestId('passenger-name-input')).toBeVisible();
+  await expect(page.getByTestId('passenger-exit-button')).toHaveCount(0);
+
+  const stored = await page.evaluate(() => ({
+    sessionId: localStorage.getItem('pix_registered_session_id'),
+    passengerName: localStorage.getItem('pix_registered_passenger_name'),
+    musicUnlocked: localStorage.getItem('pix_music_unlocked'),
+  }));
+  expect(stored).toEqual({ sessionId: null, passengerName: null, musicUnlocked: null });
+});
