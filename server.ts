@@ -1813,4 +1813,10 @@ async function startServer() {
   });
 }
 
-startServer();
+// Export the Express app so Vercel can run it as a serverless function.
+export default app;
+
+// Keep the existing local/dev server behavior, but never bind a port inside Vercel.
+if (!process.env.VERCEL) {
+  startServer();
+}
