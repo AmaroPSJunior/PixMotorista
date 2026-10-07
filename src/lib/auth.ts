@@ -49,10 +49,16 @@ export async function ensurePassengerAuth(): Promise<string> {
   await setPersistence(auth, browserLocalPersistence);
 
   if (auth.currentUser) {
+    if (!auth.currentUser.isAnonymous) {
+      throw new Error('Uma conta de motorista está autenticada; a sessão anônima do passageiro não pode reutilizar essa identidade.');
+    }
     return auth.currentUser.uid;
   }
 
   const credential = await signInAnonymously(auth);
+  if (!credential.user.isAnonymous) {
+    throw new Error('O Firebase não criou uma identidade anônima de passageiro.');
+  }
   return credential.user.uid;
 }
 
@@ -75,4 +81,13 @@ export function subscribeDriverAuth(
 
     onChange(mapDriver(user));
   });
+}
+
+export function isDriverAuthenticated(): boolean {
+  const user = auth.currentUser;
+  return Boolean(user && !user.isAnonymous && user.email);
+}
+
+export function isPassengerAuthenticated(): boolean {
+  return Boolean(auth.currentUser?.isAnonymous);
 }
