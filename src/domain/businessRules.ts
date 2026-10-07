@@ -20,3 +20,26 @@ export function isVerifiedPaymentForRide(
   if (passengerSessionId && payment.passengerSessionId !== passengerSessionId) return false;
   return true;
 }
+
+
+export const PASSENGER_REACTIVATION_MS = 24 * 60 * 60 * 1000;
+
+export function buildPassengerClosedState(now: Date = new Date()) {
+  const closedAt = now.toISOString();
+  return {
+    status: 'closed' as const,
+    closedAt,
+    reactivationExpiresAt: new Date(now.getTime() + PASSENGER_REACTIVATION_MS).toISOString(),
+    updatedAt: closedAt,
+  };
+}
+
+export function canReactivatePassenger(
+  session: { createdAt: string; lastActiveAt?: string; reactivationExpiresAt?: string },
+  nowMs: number = Date.now()
+): boolean {
+  const deadline = session.reactivationExpiresAt
+    ? new Date(session.reactivationExpiresAt).getTime()
+    : new Date(session.lastActiveAt || session.createdAt).getTime() + PASSENGER_REACTIVATION_MS;
+  return Number.isFinite(deadline) && nowMs <= deadline;
+}
