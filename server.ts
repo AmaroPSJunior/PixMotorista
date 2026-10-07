@@ -73,9 +73,43 @@ try {
   const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
   if (fs.existsSync(configPath)) {
     const firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    const serviceAccountJson = (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '').trim();
-    const credential = serviceAccountJson
-      ? cert(JSON.parse(serviceAccountJson))
+    const serviceAccountRaw = (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '').trim();
+
+    const parseServiceAccount = (raw: string): any => {
+      if (!raw) return null;
+
+      const attempts: string[] = [raw];
+
+      // Support values pasted as a quoted JSON string.
+      try {
+        const once = JSON.parse(raw);
+        if (typeof once === 'string') attempts.push(once);
+        else if (once && typeof once === 'object') return once;
+      } catch {}
+
+      // Support base64-encoded service account JSON.
+      try {
+        attempts.push(Buffer.from(raw, 'base64').toString('utf8'));
+      } catch {}
+
+      for (const candidate of attempts) {
+        try {
+          const parsed = JSON.parse(candidate);
+          if (parsed && typeof parsed === 'object') {
+            if (typeof parsed.private_key === 'string') {
+              parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+            }
+            return parsed;
+          }
+        } catch {}
+      }
+
+      throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON existe, mas não contém JSON/base64 válido.');
+    };
+
+    const serviceAccount = parseServiceAccount(serviceAccountRaw);
+    const credential = serviceAccount
+      ? cert(serviceAccount)
       : applicationDefault();
 
     const firebaseAdminApp =
