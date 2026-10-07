@@ -1,7 +1,7 @@
 import React from 'react';
 import { Star, Car, Settings, User, Eye, ArrowLeftRight, LogOut, Zap, Tag } from 'lucide-react';
 import { DriverProfile } from '../types';
-import { GITHUB_RELEASE_VERSION } from '../version';
+import { RELEASE_LABEL, DEPLOYED_AT } from '../version';
 
 interface HeaderProps {
   driver: DriverProfile;
@@ -46,10 +46,10 @@ export const Header: React.FC<HeaderProps> = ({
           {isDriver ? (
             <span
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-black bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 shadow-xs shrink-0"
-              title={`Versão da Release no GitHub: ${GITHUB_RELEASE_VERSION}`}
+              title={`Release em produção: ${RELEASE_LABEL}${DEPLOYED_AT ? ` • build ${DEPLOYED_AT}` : ''}`}
             >
               <Tag className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Release {GITHUB_RELEASE_VERSION}</span>
+              <span>Release {RELEASE_LABEL}</span>
             </span>
           ) : (
             <div />
