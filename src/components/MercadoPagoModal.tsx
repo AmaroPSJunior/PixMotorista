@@ -30,6 +30,10 @@ interface MercadoPagoModalProps {
   totalAmount: number;
   description?: string;
   selectedServicesCount?: number;
+  rideId?: string | null;
+  passengerSessionId?: string | null;
+  serviceIds?: string[];
+  productQuantities?: Record<string, number>;
   onPaymentSuccess?: (payment: MercadoPagoPayment) => void;
 }
 
@@ -39,6 +43,10 @@ export const MercadoPagoModal: React.FC<MercadoPagoModalProps> = ({
   totalAmount,
   description = 'Serviços de Corrida Moto / Extras',
   selectedServicesCount = 0,
+  rideId,
+  passengerSessionId,
+  serviceIds = [],
+  productQuantities = {},
   onPaymentSuccess,
 }) => {
   const [payment, setPayment] = useState<MercadoPagoPayment | null>(null);
@@ -88,6 +96,10 @@ export const MercadoPagoModal: React.FC<MercadoPagoModalProps> = ({
             firstName: 'Passageiro',
             lastName: 'MotoTaxi',
           },
+          rideId: rideId || undefined,
+          passengerSessionId: passengerSessionId || undefined,
+          serviceIds,
+          productQuantities,
         });
 
         if (isMounted) {
@@ -118,7 +130,7 @@ export const MercadoPagoModal: React.FC<MercadoPagoModalProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, totalAmount, description]);
+  }, [isOpen, totalAmount, description, rideId, passengerSessionId, serviceIds, productQuantities]);
 
   // 2. Poll the protected backend for payment status.
   // Payment documents stay server-only in Firestore.
