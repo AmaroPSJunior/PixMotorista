@@ -495,37 +495,50 @@ export default function App() {
 
 
   const handleStartRide = async (price: number) => {
-    const existingActive = passengerSessions.find((session) => session.status === 'active');
-    if (existingActive) {
-      setActiveSessionId(existingActive.id);
-      if (price > 0) {
-        setRidePrice(price);
-        await savePassengerSession({ ...existingActive, ridePrice: price });
-      }
+    if (!driver.authUid || !driver.googleEmail) {
+      setIsGoogleAuthModalOpen(true);
       return;
     }
 
-    const sessionId = `ride_${Date.now()}`;
-    const nowIso = new Date().toISOString();
-    const newSession: PassengerSession = {
-      id: sessionId,
-      passengerName: 'Aguardando passageiro',
-      browserId: '',
-      createdAt: nowIso,
-      lastActiveAt: nowIso,
+    const existingActive =
+      currentRide?.status === 'active'
+        ? currentRide
+        : driverRides.find((ride) => ride.status === 'active');
+
+    if (existingActive) {
+      const updated = { ...existingActive, price: Math.max(0, price || existingActive.price || 0) };
+      await saveRide(updated);
+      setCurrentRide(updated);
+      setRidePrice(updated.price);
+      return;
+    }
+
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const expiresAt = new Date(
+      now.getTime() + Math.max(1, sessionSettings.autoExpireMinutes || 30) * 60_000
+    ).toISOString();
+    const rideId = `ride_${driver.authUid.slice(0, 10)}_${Date.now()}`;
+
+    const newRide: Ride = {
+      id: rideId,
+      driverUid: driver.authUid,
+      driverEmail: driver.googleEmail.trim().toLowerCase(),
       status: 'active',
-      unlockedServices: normalizeServiceIds(sessionSettings.defaultUnlockedServices || []),
-      hasMusicUnlocked: normalizeServiceIds(
+      paymentStatus: 'unpaid',
+      price: Math.max(0, price || 0),
+      createdAt: nowIso,
+      startedAt: nowIso,
+      expiresAt,
+      defaultUnlockedServices: normalizeServiceIds(
         sessionSettings.defaultUnlockedServices || []
-      ).includes(SERVICE_IDS.MUSIC),
-      ridePrice: price,
-      driverEmail: getEffectiveDriverEmail(driver.googleEmail),
-      authUid: driver.authUid,
+      ),
     };
 
-    await savePassengerSession(newSession);
-    setActiveSessionId(sessionId);
-    setRidePrice(price);
+    await saveRide(newRide);
+    setCurrentRide(newRide);
+    setActiveSessionId(null);
+    setRidePrice(newRide.price);
     setLocalRidePaidState(false);
     setLocalPaidRideAmount(0);
     setSelectedServiceIds([]);
@@ -534,19 +547,29 @@ export default function App() {
   };
 
   const handleEndRide = async () => {
-    const target =
-      currentPassengerSession ||
-      passengerSessions.find((session) => session.id === activeSessionId) ||
-      passengerSessions.find((session) => session.status === 'active');
+    const targetRide =
+      currentRide ||
+      driverRides.find((ride) => ride.status === 'active');
 
-    if (target) {
-      await savePassengerSession({
-        ...target,
-        status: 'closed',
-        lastActiveAt: new Date().toISOString(),
-      });
+    if (targetRide) {
+      const endedAt = new Date().toISOString();
+      await updateRideStatus(targetRide.id, 'completed', { endedAt });
+
+      const rideSessions = passengerSessions.filter(
+        (session) => session.rideId === targetRide.id && session.status === 'active'
+      );
+      await Promise.all(
+        rideSessions.map((session) =>
+          savePassengerSession({
+            ...session,
+            status: 'closed',
+            lastActiveAt: endedAt,
+          })
+        )
+      );
     }
 
+    setCurrentRide(null);
     setActiveSessionId(null);
     setRidePrice(0);
     setLocalRidePaidState(false);
@@ -555,6 +578,28 @@ export default function App() {
     setProductQuantities({});
     setSelectedTip(0);
   };
+
+  useEffect(() => {
+    if (
+      viewMode !== 'driver' ||
+      !isGoogleAuthenticated ||
+      !currentRide ||
+      currentRide.status !== 'active' ||
+      !currentRide.expiresAt
+    ) return;
+
+    const remaining = new Date(currentRide.expiresAt).getTime() - Date.now();
+    if (remaining <= 0) {
+      updateRideStatus(currentRide.id, 'expired', { endedAt: new Date().toISOString() });
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      updateRideStatus(currentRide.id, 'expired', { endedAt: new Date().toISOString() });
+    }, Math.min(remaining, 2_147_000_000));
+
+    return () => window.clearTimeout(timer);
+  }, [viewMode, isGoogleAuthenticated, currentRide?.id, currentRide?.status, currentRide?.expiresAt]);
 
   // Calculate sum of selected services and products
   const selectedServicesTotal = services.reduce((acc, curr) => {
