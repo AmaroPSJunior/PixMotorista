@@ -83,18 +83,32 @@ service cloud.firestore {
         );
 
       allow create: if signedIn()
+        && request.auth.token.firebase.sign_in_provider == 'anonymous'
         && request.resource.data.authUid == request.auth.uid
         && ('rideId' in request.resource.data)
         && ('driverUid' in request.resource.data)
+        && ('unlockedServices' in request.resource.data)
+        && ('ridePrice' in request.resource.data)
         && rideIsActive(request.resource.data.rideId)
         && get(/databases/$(database)/documents/rides/$(request.resource.data.rideId)).data.driverUid
-          == request.resource.data.driverUid;
+          == request.resource.data.driverUid
+        && request.resource.data.unlockedServices
+          == get(/databases/$(database)/documents/rides/$(request.resource.data.rideId)).data.defaultUnlockedServices
+        && request.resource.data.ridePrice
+          == get(/databases/$(database)/documents/rides/$(request.resource.data.rideId)).data.price;
 
       allow update: if (
           ownsPassengerDocument()
+          && request.auth.token.firebase.sign_in_provider == 'anonymous'
           && request.resource.data.authUid == request.auth.uid
           && request.resource.data.rideId == resource.data.rideId
           && request.resource.data.driverUid == resource.data.driverUid
+          && rideIsActive(resource.data.rideId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'passengerName',
+            'lastActiveAt',
+            'browserId'
+          ])
         )
         || (
           isDriverIdentity()
