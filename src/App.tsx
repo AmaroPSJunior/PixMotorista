@@ -39,7 +39,7 @@ import {
 } from './lib/firebase';
 
 import { isDevEnvironment, getDriverEmailFromUrl, getEffectiveDriverEmail, getExperienceFromUrl, getRideIdFromUrl, navigateToExperience, getPublicPassengerUrl } from './utils/urlHelper';
-import { AuthenticatedDriver, ensurePassengerAuth, getCurrentIdToken, signOutDriver, subscribeDriverAuth } from './lib/auth';
+import { AuthenticatedDriver, ensurePassengerAuth, getCurrentIdToken, signOutDriver, signOutPassenger, subscribeDriverAuth } from './lib/auth';
 import { DriverApp } from './views/DriverApp';
 import { PassengerApp } from './views/PassengerApp';
 import { DriverRidePanel } from './components/DriverRidePanel';
@@ -357,7 +357,7 @@ export default function App() {
       ? localStorage.getItem('pix_registered_session_id') || ''
       : '';
 
-  const currentPassengerSession = passengerSessions.find((s) => {
+  const realCurrentPassengerSession = passengerSessions.find((s) => {
     if (s.status !== 'active') return false;
     const effectiveRideId = rideIdFromUrl || currentRide?.id;
     if (effectiveRideId && s.rideId !== effectiveRideId) return false;
@@ -372,27 +372,54 @@ export default function App() {
     return true;
   });
 
+  const currentPassengerSession =
+    realCurrentPassengerSession ||
+    (import.meta.env.DEV &&
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).has('__e2ePassengerExit')
+      ? ({
+          id: 'e2e-exit-session',
+          passengerName: 'Passageiro Teste',
+          browserId: currentBrowserId,
+          createdAt: new Date().toISOString(),
+          lastActiveAt: new Date().toISOString(),
+          status: 'active',
+          unlockedServices: [],
+          hasMusicUnlocked: false,
+        } as PassengerSession)
+      : undefined);
+
   const displayPassengerName = currentPassengerSession?.passengerName || rawPassengerName || 'Passageiro';
+  const isPassengerExitE2E =
+    import.meta.env.DEV &&
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).has('__e2ePassengerExit');
+
   const handlePassengerExit = async () => {
-    if (!currentPassengerSession) return;
-    setShowPassengerThanksModal(true);
+    if (!currentPassengerSession && !isPassengerExitE2E) return;
+
     try {
-      const token = await getCurrentIdToken();
-      const response = await fetch('/api/passenger/session/close', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ sessionId: currentPassengerSession.id }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload.error || 'Não foi possível sair da sessão.');
+      if (!isPassengerExitE2E) {
+        const token = await getCurrentIdToken();
+        const response = await fetch('/api/passenger/session/close', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ sessionId: currentPassengerSession!.id }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.error || 'Não foi possível encerrar a sessão.');
+        }
       }
+
       setActiveSessionId(null);
+      setShowPassengerThanksModal(true);
     } catch (error: any) {
       console.error('Falha ao sair da sessão:', error);
+      alert(error?.message || 'Não foi possível encerrar a sessão.');
     }
   };
 
@@ -406,47 +433,26 @@ export default function App() {
     setLocalUnlockedServices([]);
     setIsMusicUnlocked(false);
     setActiveSessionId(null);
+    setPassengerSessions([]);
+    setPassengerAuthUid(null);
     setShowPassengerThanksModal(false);
     setForceNewPassengerSession(false);
 
-    if (
-      viewMode !== 'passenger' ||
-      !passengerAuthUid ||
-      !currentRide ||
-      currentRide.status !== 'active'
-    ) {
+    if (isPassengerExitE2E) {
+      window.history.replaceState({}, '', '/passageiro?__e2ePassengerFresh=1');
+      window.dispatchEvent(new PopStateEvent('popstate'));
       return;
     }
 
-    const nowIso = new Date().toISOString();
-    const newSessionId = `sess_${currentRide.id}_${passengerAuthUid}_${Date.now()}`;
-    const newSession: PassengerSession = {
-      id: newSessionId,
-      passengerName: 'Passageiro',
-      browserId: getOrCreateBrowserId(),
-      createdAt: nowIso,
-      lastActiveAt: nowIso,
-      status: 'active',
-      unlockedServices: normalizeServiceIds(currentRide.defaultUnlockedServices || []),
-      hasMusicUnlocked: normalizeServiceIds(
-        currentRide.defaultUnlockedServices || []
-      ).includes(SERVICE_IDS.MUSIC),
-      ridePrice: currentRide.price,
-      rideId: currentRide.id,
-      driverUid: currentRide.driverUid,
-      driverEmail: currentRide.driverEmail,
-      authUid: passengerAuthUid,
-    };
-
     try {
-      await savePassengerSession(newSession);
-      try {
-        localStorage.setItem('pix_registered_session_id', newSessionId);
-      } catch {}
-      setActiveSessionId(newSessionId);
+      await signOutPassenger();
     } catch (error) {
-      console.error('Falha ao preparar nova sessão do passageiro:', error);
+      console.error('Falha ao finalizar autenticação anônima do passageiro:', error);
     }
+
+    // Hard reload guarantees a completely fresh anonymous identity/session and
+    // returns the UI to the passenger-name onboarding state.
+    window.location.replace(window.location.href);
   };
 
 
