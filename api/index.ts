@@ -1,6 +1,4 @@
 import crypto from 'crypto';
-import app from '../server';
-
 const result = (ok: boolean, detail: string, level: 'ok' | 'warning' | 'error' = ok ? 'ok' : 'error') => ({ ok, level, detail });
 
 async function testEnvironment() {
@@ -158,5 +156,6 @@ export default async function handler(req: any, res: any) {
   const query = params.toString();
   req.url = query ? route + '?' + query : route;
 
+  const { default: app } = await import('../server');
   return app(req, res);
 }
