@@ -43,3 +43,8 @@ export function canReactivatePassenger(
     : new Date(session.lastActiveAt || session.createdAt).getTime() + PASSENGER_REACTIVATION_MS;
   return Number.isFinite(deadline) && nowMs <= deadline;
 }
+
+
+export function isPassengerCloseTerminalStatus(status: number): boolean {
+  return (status >= 200 && status < 300) || status === 404;
+}
