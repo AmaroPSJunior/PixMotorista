@@ -2,7 +2,11 @@
   "rewrites": [
     {
       "source": "/auth/callback",
-      "destination": "/api/auth-callback"
+      "destination": "/api?__route=auth-callback"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "/api?__path=:path*"
     }
   ]
 }
