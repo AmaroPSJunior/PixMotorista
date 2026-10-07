@@ -396,17 +396,57 @@ export default function App() {
     }
   };
 
-  const handlePassengerThanksConfirm = () => {
+  const handlePassengerThanksConfirm = async () => {
     try {
       localStorage.removeItem('pix_registered_session_id');
       localStorage.removeItem('pix_registered_passenger_name');
       localStorage.removeItem('pix_music_unlocked');
     } catch {}
+
     setLocalUnlockedServices([]);
     setIsMusicUnlocked(false);
     setActiveSessionId(null);
     setShowPassengerThanksModal(false);
-    setForceNewPassengerSession(true);
+    setForceNewPassengerSession(false);
+
+    if (
+      viewMode !== 'passenger' ||
+      !passengerAuthUid ||
+      !currentRide ||
+      currentRide.status !== 'active'
+    ) {
+      return;
+    }
+
+    const nowIso = new Date().toISOString();
+    const newSessionId = `sess_${currentRide.id}_${passengerAuthUid}_${Date.now()}`;
+    const newSession: PassengerSession = {
+      id: newSessionId,
+      passengerName: 'Passageiro',
+      browserId: getOrCreateBrowserId(),
+      createdAt: nowIso,
+      lastActiveAt: nowIso,
+      status: 'active',
+      unlockedServices: normalizeServiceIds(currentRide.defaultUnlockedServices || []),
+      hasMusicUnlocked: normalizeServiceIds(
+        currentRide.defaultUnlockedServices || []
+      ).includes(SERVICE_IDS.MUSIC),
+      ridePrice: currentRide.price,
+      rideId: currentRide.id,
+      driverUid: currentRide.driverUid,
+      driverEmail: currentRide.driverEmail,
+      authUid: passengerAuthUid,
+    };
+
+    try {
+      await savePassengerSession(newSession);
+      try {
+        localStorage.setItem('pix_registered_session_id', newSessionId);
+      } catch {}
+      setActiveSessionId(newSessionId);
+    } catch (error) {
+      console.error('Falha ao preparar nova sessão do passageiro:', error);
+    }
   };
 
 
