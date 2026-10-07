@@ -397,8 +397,10 @@ export function subscribePassengerSessions(
   } = {}
 ) {
   const colRef = collection(db, 'passenger_sessions');
-  const source = options.driverMode && options.driverUid
-    ? query(colRef, where('driverUid', '==', options.driverUid))
+  // Temporary test mode: every authenticated driver subscribes to every passenger session.
+  // Later this will be scoped by the driver/ride QR-code relationship.
+  const source = options.driverMode
+    ? colRef
     : options.authUid
       ? query(colRef, where('authUid', '==', options.authUid))
       : null;
