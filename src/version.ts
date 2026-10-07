@@ -1,13 +1,21 @@
 /**
- * Versão Oficial da Release do projeto (SemVer - Semantic Versioning).
- * Padrão seguido por grandes empresas de tecnologia (ex: Google, GitHub):
- * 
- * MAJOR.MINOR.PATCH (ex: v1.1.0)
- * 
- * 1. MAJOR (ex: v2.0.0): Mudanças estruturais grandes, reestruturação da API ou quebra de compatibilidade.
- * 2. MINOR (ex: v1.1.0): Novas funcionalidades, integrações de recursos (ex: QR Code com e-mail, sincronização multi-dispositivo, reativação de sessão).
- * 3. PATCH (ex: v1.0.1): Correções de bugs, pequenas melhorias visuais e hotfixes.
+ * Versão oficial da aplicação.
+ *
+ * SemVer:
+ * - MAJOR: quebra de compatibilidade / mudança estrutural.
+ * - MINOR: nova funcionalidade compatível.
+ * - PATCH: correção, hotfix ou pequena melhoria.
+ *
+ * O número SemVer vem do package.json.
+ * A identificação do deploy vem da Vercel e muda a cada build.
  */
-export const GITHUB_RELEASE_VERSION = 'v1.1.0';
-export const APP_VERSION = GITHUB_RELEASE_VERSION;
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || 'v0.0.0';
+export const GITHUB_RELEASE_VERSION = APP_VERSION;
+export const DEPLOY_SHA = import.meta.env.VITE_DEPLOY_SHA || 'local';
+export const DEPLOY_BUILD = import.meta.env.VITE_DEPLOY_BUILD || 'local';
+export const DEPLOYED_AT = import.meta.env.VITE_DEPLOYED_AT || '';
 
+export const RELEASE_LABEL =
+  DEPLOY_SHA && DEPLOY_SHA !== 'local'
+    ? `${APP_VERSION} · ${DEPLOY_SHA}`
+    : APP_VERSION;
