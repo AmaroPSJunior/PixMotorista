@@ -312,6 +312,8 @@ export default function App() {
 
   const currentPassengerSession = passengerSessions.find((s) => {
     if (s.status !== 'active') return false;
+    if (rideIdFromUrl && s.rideId !== rideIdFromUrl) return false;
+    if (viewMode === 'passenger' && passengerAuthUid && s.authUid !== passengerAuthUid) return false;
     if (registeredSessionId && s.id === registeredSessionId) {
       return true;
     }
@@ -326,10 +328,10 @@ export default function App() {
 
   // Active passenger session unlocked services list from Firestore (authoritative)
   // Combine session-specific unlocks with global default unlocked services from sessionSettings
-  const defaultUnlocked = sessionSettings.defaultUnlockedServices || [];
+  const defaultUnlocked = currentRide?.defaultUnlockedServices || sessionSettings.defaultUnlockedServices || [];
   const currentSessionUnlocked = currentPassengerSession
     ? Array.from(new Set([...defaultUnlocked, ...currentPassengerSession.unlockedServices]))
-    : Array.from(new Set([...defaultUnlocked, ...localUnlockedServices]));
+    : Array.from(new Set(defaultUnlocked));
 
   const allUnlockedServicesList = normalizeServiceIds(currentSessionUnlocked);
 
@@ -352,19 +354,19 @@ export default function App() {
   const effectiveWifiUnlocked =
     viewMode === 'driver' ? true : passengerHasWifiUnlocked;
 
-  // Firestore is authoritative for shared ride data; useRideSession is the local cache.
+  // Firestore is authoritative for shared ride data; useRideSession is only a UI cache.
   useEffect(() => {
-    if (
-      ridePrice === 0 &&
-      currentPassengerSession?.ridePrice &&
-      currentPassengerSession.ridePrice > 0
-    ) {
-      setRidePrice(currentPassengerSession.ridePrice);
+    const authoritativePrice = currentRide?.price ?? currentPassengerSession?.ridePrice;
+    if (authoritativePrice !== undefined && authoritativePrice !== ridePrice) {
+      setRidePrice(authoritativePrice);
     }
-  }, [currentPassengerSession?.ridePrice, ridePrice]);
+  }, [currentRide?.price, currentPassengerSession?.ridePrice, ridePrice]);
 
   const handleUpdateRidePrice = (price: number) => {
     setRidePrice(price);
+    if (currentRide) {
+      saveRide({ ...currentRide, price });
+    }
     if (currentPassengerSession) {
       savePassengerSession({
         ...currentPassengerSession,
