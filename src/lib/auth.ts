@@ -66,6 +66,13 @@ export function getCurrentAuthUid(): string | null {
   return auth.currentUser?.uid || null;
 }
 
+export async function getCurrentIdToken(): Promise<string> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Nenhuma sessão Firebase ativa.');
+  return user.getIdToken();
+}
+
+
 export async function signOutDriver(): Promise<void> {
   await signOut(auth);
 }
