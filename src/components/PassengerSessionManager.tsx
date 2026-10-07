@@ -31,6 +31,7 @@ import {
   saveSessionSettings,
 } from '../lib/firebase';
 import { normalizeServiceId, normalizeServiceIds, SERVICE_IDS } from '../domain/serviceIds';
+import { getCurrentIdToken } from '../lib/auth';
 
 interface PassengerSessionManagerProps {
   viewMode: 'driver' | 'passenger';
@@ -195,12 +196,24 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
 
   const handlePassengerExit = async () => {
     if (!currentDeviceSession) return;
-    const now = new Date();
-    await updatePassengerSessionStatus(currentDeviceSession.id, 'closed', {
-      closedAt: now.toISOString(),
-      reactivationExpiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
-    });
-    onSetActiveSessionId(null);
+    try {
+      const token = await getCurrentIdToken();
+      const response = await fetch('/api/passenger/session/close', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ sessionId: currentDeviceSession.id }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || 'Não foi possível sair da sessão.');
+      }
+      onSetActiveSessionId(null);
+    } catch (error: any) {
+      alert(error?.message || 'Não foi possível sair da sessão.');
+    }
   };
 
   const handleToggleResource = async (
