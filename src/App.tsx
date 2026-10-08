@@ -1145,7 +1145,7 @@ export default function App() {
           <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 text-center">
             <h2 className="font-black text-slate-900 text-lg">Área do motorista</h2>
             <p className="text-sm text-slate-500 mt-2">
-              Faça login com sua Conta Google para acessar corridas, configurações e histórico.
+              Faça login com sua Conta Google para acessar passageiros, configurações e histórico.
             </p>
             <button
               type="button"
