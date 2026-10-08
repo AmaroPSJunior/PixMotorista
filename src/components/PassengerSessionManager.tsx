@@ -42,6 +42,8 @@ interface PassengerSessionManagerProps {
   onSetActiveSessionId: (id: string | null) => void;
   isDevEnv?: boolean;
   driverEmail?: string;
+  requirePassengerIdentification?: boolean;
+  onIdentifyPassenger?: (name: string) => Promise<void>;
 }
 
 export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = ({
@@ -53,12 +55,16 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
   onSetActiveSessionId,
   isDevEnv = false,
   driverEmail,
+  requirePassengerIdentification = false,
+  onIdentifyPassenger,
 }) => {
   const browserId = getOrCreateBrowserId();
   const [passengerNameInput, setPassengerNameInput] = useState('');
   const [isEditingName, setIsEditingName] = useState(false);
   const [activeDriverTab, setActiveDriverTab] = useState<'sessions' | 'devices'>('sessions');
   const [showFullHistory, setShowFullHistory] = useState(false);
+  const [identifyError, setIdentifyError] = useState('');
+  const [isIdentifyingPassenger, setIsIdentifyingPassenger] = useState(false);
 
   const registeredName = (
     typeof localStorage !== 'undefined'
@@ -104,9 +110,14 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
           } as PassengerSession)
         : undefined;
 
-  // Auto-fill input when device session exists
+  // Auto-fill only a real passenger name, never the generic placeholder.
   useEffect(() => {
-    if (currentDeviceSession && !passengerNameInput) {
+    if (
+      currentDeviceSession &&
+      currentDeviceSession.passengerName &&
+      currentDeviceSession.passengerName.trim().toLowerCase() !== 'passageiro' &&
+      !passengerNameInput
+    ) {
       setPassengerNameInput(currentDeviceSession.passengerName);
       if (activeSessionId !== currentDeviceSession.id) {
         onSetActiveSessionId(currentDeviceSession.id);
@@ -135,27 +146,38 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
     return () => clearInterval(interval);
   }, [viewMode, sessions, settings.autoExpireMinutes]);
 
-  // Passenger identification edits the already-authorized ride session only.
+  // Passenger identification is required before the passenger UI is unlocked.
   const handleIdentifyPassenger = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!currentDeviceSession) return;
+    const name = passengerNameInput.trim();
+    if (!name) return;
 
-    const name = passengerNameInput.trim() || 'Passageiro';
-    const nowIso = new Date().toISOString();
+    setIdentifyError('');
+    setIsIdentifyingPassenger(true);
+    try {
+      if (onIdentifyPassenger) {
+        await onIdentifyPassenger(name);
+      } else if (currentDeviceSession) {
+        const nowIso = new Date().toISOString();
+        await savePassengerSession({
+          ...currentDeviceSession,
+          passengerName: name,
+          lastActiveAt: nowIso,
+        });
 
-    await savePassengerSession({
-      ...currentDeviceSession,
-      passengerName: name,
-      lastActiveAt: nowIso,
-    });
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('pix_registered_passenger_name', name);
+          localStorage.setItem('pix_registered_session_id', currentDeviceSession.id);
+        }
 
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('pix_registered_passenger_name', name);
-      localStorage.setItem('pix_registered_session_id', currentDeviceSession.id);
+        onSetActiveSessionId(currentDeviceSession.id);
+      }
+      setIsEditingName(false);
+    } catch (error: any) {
+      setIdentifyError(error?.message || 'Não foi possível iniciar sua sessão.');
+    } finally {
+      setIsIdentifyingPassenger(false);
     }
-
-    onSetActiveSessionId(currentDeviceSession.id);
-    setIsEditingName(false);
   };
 
   // Heartbeat update on user action
@@ -281,7 +303,11 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
 
   // Temporary test mode: every driver can see every passenger session.
   // Later this will be scoped by the QR-code relationship between driver and ride.
-  const driverSessions = sessions;
+  const driverSessions = sessions.filter(
+    (session) =>
+      Boolean(session.passengerName?.trim()) &&
+      session.passengerName.trim().toLowerCase() !== 'passageiro'
+  );
 
   const activeSessions = driverSessions.filter((s) => s.status === 'active');
   const expiredSessions = driverSessions.filter((s) => s.status === 'expired' || s.status === 'closed');
@@ -297,30 +323,15 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
       return timeB - timeA;
     });
 
-  // PASSENGER VIEW: ask for the passenger name when the current session is still generic.
+  // PASSENGER VIEW: the whole passenger experience remains locked until a real name exists.
   if (viewMode === 'passenger') {
-    const needsName =
-      Boolean(currentDeviceSession) &&
-      (!currentDeviceSession?.passengerName ||
-        currentDeviceSession.passengerName.trim().toLowerCase() === 'passageiro');
-
-    if (!needsName) {
-      if (currentDeviceSession) return null;
-
-      if (currentDeviceAnySession?.status === 'closed') {
-        return (
-          <section className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-center">
-            <p className="text-sm font-black text-amber-900">Você saiu da sessão</p>
-            <p className="text-xs text-amber-800 mt-1">O motorista pode reativar seu acesso por até 24 horas.</p>
-          </section>
-        );
-      }
-
-      return null;
-    }
-
+    const needsName = requirePassengerIdentification;
+    if (!needsName) return null;
     return (
-      <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+      <div
+        data-testid="passenger-login-gate"
+        className="fixed inset-0 z-[250] bg-slate-950 flex items-center justify-center p-4"
+      >
         <form
           data-testid="passenger-name-modal"
           onSubmit={handleIdentifyPassenger}
@@ -332,8 +343,18 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
             </div>
             <h2 className="text-lg font-black text-slate-900">Como podemos te chamar?</h2>
             <p className="text-xs text-slate-500 mt-1">
-              Digite seu nome para o motorista identificar sua sessão.
+              Digite seu nome para o motorista identificar você e liberar os recursos da viagem.
             </p>
+            {currentDeviceAnySession?.status === 'expired' && (
+              <p className="text-[11px] font-bold text-amber-600 mt-2">
+                Sua sessão anterior expirou. Informe seu nome para iniciar uma nova sessão.
+              </p>
+            )}
+            {currentDeviceAnySession?.status === 'closed' && (
+              <p className="text-[11px] font-bold text-amber-600 mt-2">
+                Sua sessão anterior foi encerrada. Informe seu nome para entrar novamente.
+              </p>
+            )}
           </div>
 
           <input
@@ -345,12 +366,18 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
             className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
           />
 
+          {identifyError && (
+            <p data-testid="passenger-login-error" className="text-xs font-bold text-rose-600 text-center">
+              {identifyError}
+            </p>
+          )}
+
           <button
             type="submit"
-            disabled={!passengerNameInput.trim()}
+            disabled={!passengerNameInput.trim() || isIdentifyingPassenger}
             className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-300 disabled:text-slate-500 text-white font-black py-3 text-sm transition-colors"
           >
-            Continuar
+            {isIdentifyingPassenger ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
       </div>
