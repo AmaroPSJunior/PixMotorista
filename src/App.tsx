@@ -225,6 +225,38 @@ export default function App() {
   }, [driver.googleEmail, driver.authUid, isGoogleAuthenticated, viewMode, passengerAuthUid, rideIdFromUrl, currentRide?.id]);
 
   useEffect(() => {
+    if (viewMode !== 'driver' || !isGoogleAuthenticated) return;
+
+    let cancelled = false;
+
+    const refreshDriverPassengerSessions = async () => {
+      try {
+        const token = await getCurrentIdToken();
+        const response = await fetch('/api/driver/passenger-sessions', {
+          headers: { Authorization: 'Bearer ' + token },
+          cache: 'no-store',
+        });
+        if (!response.ok) return;
+
+        const payload = await response.json().catch(() => ({}));
+        if (!cancelled && Array.isArray(payload?.sessions)) {
+          setPassengerSessions(payload.sessions);
+        }
+      } catch (error) {
+        console.warn('Falha no fallback de sessões do motorista:', error);
+      }
+    };
+
+    refreshDriverPassengerSessions();
+    const interval = window.setInterval(refreshDriverPassengerSessions, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [viewMode, isGoogleAuthenticated]);
+
+  useEffect(() => {
     if (viewMode !== 'driver' || !currentRide) return;
     const linkedSession = passengerSessions.find(
       (session) =>
