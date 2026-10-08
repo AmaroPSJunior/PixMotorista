@@ -126,6 +126,9 @@ export interface PassengerSession {
   authUid?: string;
   closedAt?: string;
   reactivationExpiresAt?: string;
+  updatedAt?: string;
+  lastResourceChangeAt?: string;
+  resourceRevision?: number;
 }
 
 export interface SessionSettings {
