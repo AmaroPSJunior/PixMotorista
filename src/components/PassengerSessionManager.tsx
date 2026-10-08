@@ -272,6 +272,30 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
     );
   };
 
+  const handleUnlockAllResources = async (session: PassengerSession) => {
+    const serviceIds = unifiedServicesList
+      .filter((srv) => {
+        const type =
+          srv.itemType ||
+          (srv.id === 'wifi' ||
+          srv.id === 'spotify_music' ||
+          srv.id === 'charger' ||
+          srv.id === 'extra_stop'
+            ? 'servico'
+            : 'produto');
+        return type === 'servico';
+      })
+      .map((srv) => normalizeServiceId(srv.id));
+
+    let nextUnlocked = normalizeServiceIds(session.unlockedServices);
+    for (const serviceId of serviceIds) {
+      if (!nextUnlocked.includes(serviceId)) {
+        await toggleSessionServiceUnlock(session.id, serviceId, nextUnlocked, true);
+        nextUnlocked = [...nextUnlocked, serviceId];
+      }
+    }
+  };
+
   // Helper to get one canonical resource card per service.
   const unifiedServicesList = (() => {
     const list = services.length > 0 ? services : DEFAULT_SERVICES;
@@ -730,67 +754,119 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
                             </div>
 
                             {/* Categoria SERVIÇOS DO VEÍCULO */}
-                            <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
-                              <span className="text-sky-300 font-extrabold text-[11px] flex items-center gap-1">
-                                🛠️ Recursos & Serviços do Veículo:
-                              </span>
+                            <div className="bg-slate-900/80 p-3 rounded-2xl border border-slate-800 space-y-3">
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <span className="text-sky-300 font-extrabold text-xs flex items-center gap-1.5">
+                                    🛠️ Recursos do veículo
+                                  </span>
+                                  <p className="text-[10px] text-slate-500 mt-0.5">
+                                    Toque uma vez para liberar ou bloquear.
+                                  </p>
+                                </div>
 
-                              <div className="flex flex-wrap items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleUnlockAllResources(session)}
+                                  className="min-h-12 px-4 rounded-2xl bg-emerald-500 text-slate-950 text-xs font-black flex items-center gap-2 shadow-lg shadow-emerald-500/20 active:scale-[0.98]"
+                                  title="Liberar todos os recursos deste passageiro"
+                                >
+                                  <Unlock className="w-4 h-4" />
+                                  Liberar tudo
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2">
                                 {unifiedServicesList
                                   .filter((srv) => {
-                                    const type = srv.itemType || (srv.id === 'wifi' || srv.id === 'spotify_music' || srv.id === 'charger' || srv.id === 'extra_stop' ? 'servico' : 'produto');
+                                    const type =
+                                      srv.itemType ||
+                                      (srv.id === 'wifi' ||
+                                      srv.id === 'spotify_music' ||
+                                      srv.id === 'charger' ||
+                                      srv.id === 'extra_stop'
+                                        ? 'servico'
+                                        : 'produto');
                                     return type === 'servico';
                                   })
                                   .map((srv) => {
                                     const isMusic = srv.id === 'spotify_music' || srv.id === '2';
                                     const isWifi = srv.id === 'wifi' || srv.id === '1';
-                                    const isCharger = srv.id === 'charger' || srv.id === '3' || srv.title.toLowerCase().includes('carregador');
+                                    const isCharger =
+                                      srv.id === 'charger' ||
+                                      srv.id === '3' ||
+                                      srv.title.toLowerCase().includes('carregador');
 
                                     const isUnlocked =
                                       session.unlockedServices.includes(srv.id) ||
-                                      (isMusic && (session.hasMusicUnlocked || session.unlockedServices.includes('2') || session.unlockedServices.includes('spotify_music'))) ||
-                                      (isWifi && (session.unlockedServices.includes('1') || session.unlockedServices.includes('wifi'))) ||
-                                      (isCharger && (session.unlockedServices.includes('3') || session.unlockedServices.includes('charger')));
+                                      (isMusic &&
+                                        (session.hasMusicUnlocked ||
+                                          session.unlockedServices.includes('2') ||
+                                          session.unlockedServices.includes('spotify_music'))) ||
+                                      (isWifi &&
+                                        (session.unlockedServices.includes('1') ||
+                                          session.unlockedServices.includes('wifi'))) ||
+                                      (isCharger &&
+                                        (session.unlockedServices.includes('3') ||
+                                          session.unlockedServices.includes('charger')));
+
+                                    const Icon = isMusic ? Music : isWifi ? Wifi : Zap;
 
                                     return (
                                       <button
                                         key={srv.id}
                                         type="button"
                                         onClick={() => handleToggleResource(session, srv.id)}
-                                        className={`px-3 py-1.5 rounded-xl font-extrabold text-[11px] flex items-center gap-1.5 border transition-all cursor-pointer ${
+                                        aria-pressed={isUnlocked}
+                                        className={`min-h-[72px] rounded-2xl border px-3 py-3 text-left transition-all active:scale-[0.98] ${
                                           isUnlocked
-                                            ? isMusic
-                                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-xs hover:bg-emerald-500/30'
-                                              : isWifi
-                                              ? 'bg-sky-500/20 text-sky-300 border-sky-500/50 shadow-xs hover:bg-sky-500/30'
-                                              : 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-xs hover:bg-amber-500/30'
-                                            : 'bg-slate-950/90 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'
+                                            ? 'bg-emerald-500/20 border-emerald-400/70 shadow-lg shadow-emerald-500/10'
+                                            : 'bg-slate-950 border-slate-700'
                                         }`}
-                                        title={isUnlocked ? `Clique para Desativar ${srv.title}` : `Clique para Ativar ${srv.title}`}
+                                        title={isUnlocked ? `Bloquear ${srv.title}` : `Liberar ${srv.title}`}
                                       >
-                                        {isMusic ? (
-                                          <Music className="w-3.5 h-3.5 text-emerald-400" />
-                                        ) : isWifi ? (
-                                          <Wifi className="w-3.5 h-3.5 text-sky-400" />
-                                        ) : (
-                                          <Zap className="w-3.5 h-3.5 text-amber-400" />
-                                        )}
-                                        <span>{srv.title}:</span>
-                                        {isUnlocked ? (
-                                          <span className="text-emerald-400 font-black flex items-center gap-0.5">
-                                            ON <Unlock className="w-3 h-3 text-emerald-400" />
-                                          </span>
-                                        ) : (
-                                          <span className="text-slate-500 font-bold flex items-center gap-0.5">
-                                            OFF <Lock className="w-3 h-3 text-slate-500" />
-                                          </span>
-                                        )}
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="flex items-center gap-2 min-w-0">
+                                            <div
+                                              className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                                                isUnlocked
+                                                  ? 'bg-emerald-400 text-slate-950'
+                                                  : 'bg-slate-800 text-slate-300'
+                                              }`}
+                                            >
+                                              <Icon className="w-5 h-5" />
+                                            </div>
+                                            <div className="min-w-0">
+                                              <div className="text-sm font-black text-white leading-tight truncate">
+                                                {srv.title}
+                                              </div>
+                                              <div
+                                                className={`text-[11px] font-black mt-1 ${
+                                                  isUnlocked ? 'text-emerald-300' : 'text-slate-500'
+                                                }`}
+                                              >
+                                                {isUnlocked ? 'LIBERADO' : 'BLOQUEADO'}
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          <div
+                                            className={`w-12 h-7 rounded-full p-1 shrink-0 transition-colors ${
+                                              isUnlocked ? 'bg-emerald-400' : 'bg-slate-700'
+                                            }`}
+                                          >
+                                            <div
+                                              className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                                                isUnlocked ? 'translate-x-5' : 'translate-x-0'
+                                              }`}
+                                            />
+                                          </div>
+                                        </div>
                                       </button>
                                     );
                                   })}
                               </div>
                             </div>
-
                             {/* Categoria PRODUTOS A BORDO */}
                             {unifiedServicesList.some((srv) => (srv.itemType || (srv.id === 'wifi' || srv.id === 'spotify_music' || srv.id === 'charger' || srv.id === 'extra_stop' ? 'servico' : 'produto')) === 'produto') && (
                               <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
