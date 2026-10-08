@@ -90,7 +90,6 @@ const getItemType = (service: AdditionalService): 'servico' | 'produto' => {
     id === 'wifi' ||
     id === 'spotify_music' ||
     id === 'charger' ||
-    id === 'extra_stop' ||
     service.category === 'cortesia' ||
     service.category === 'conforto' ||
     service.category === 'espera'
@@ -171,7 +170,7 @@ const getItemType = (service: AdditionalService): 'servico' | 'produto' => {
                 Catálogo de Serviços e Produtos
               </h2>
               <p className="text-xs text-slate-500 font-medium mt-0.5">
-                Serviços do veículo (recursos) e produtos a bordo para a viagem
+                Recursos do veículo e produtos disponíveis a bordo
               </p>
             </div>
           </div>
@@ -272,6 +271,8 @@ const getItemType = (service: AdditionalService): 'servico' | 'produto' => {
             return (
               <div
                 key={service.id}
+                id={isService ? `passenger-resource-${service.id}` : undefined}
+                data-service-id={service.id}
                 onClick={() => handleCardClick(service, isUnlocked)}
                 className={`group relative p-3.5 sm:p-4 rounded-xl border transition-all flex items-center justify-between gap-3 ${
                   isPassengerUnlocked
