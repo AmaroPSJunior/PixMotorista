@@ -233,3 +233,80 @@ test('motorista libera recurso sem recarregar ou mover a tela', async ({ page })
   expect(result.payload.session.unlockedServices).toContain('wifi');
   expect(result.after).toBe(result.before);
 });
+
+
+test('liberação remota do motorista chega ao passageiro sem reload e toca som', async ({ page }) => {
+  await page.route('**/api/spotify/status', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ configured: true, hasToken: false, isIntegrated: false, userProfile: null }),
+    });
+  });
+
+  await page.route('**/api/passenger/session/start', async (route) => {
+    const payload = JSON.parse(route.request().postData() || '{}');
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        waitingForRide: true,
+        session: {
+          id: 'sess_remote_unlock_e2e',
+          passengerName: payload.passengerName || 'Junior',
+          browserId: payload.browserId || 'browser-e2e',
+          createdAt: new Date().toISOString(),
+          lastActiveAt: new Date().toISOString(),
+          status: 'active',
+          unlockedServices: [],
+          hasMusicUnlocked: false,
+          authUid: 'e2e-anonymous-passenger',
+        },
+      }),
+    });
+  });
+
+  let currentCalls = 0;
+  await page.route('**/api/passenger/session/current?**', async (route) => {
+    currentCalls += 1;
+    const unlocked = currentCalls >= 2;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        session: {
+          id: 'sess_remote_unlock_e2e',
+          passengerName: 'Junior',
+          browserId: 'browser-e2e',
+          createdAt: new Date().toISOString(),
+          lastActiveAt: new Date().toISOString(),
+          status: 'active',
+          unlockedServices: unlocked ? ['spotify_music'] : [],
+          hasMusicUnlocked: unlocked,
+          authUid: 'e2e-anonymous-passenger',
+        },
+      }),
+    });
+  });
+
+  await page.addInitScript(() => {
+    (window as any).__unlockSoundCount = 0;
+    window.addEventListener('pix:success-sound', () => {
+      (window as any).__unlockSoundCount += 1;
+    });
+  });
+
+  await page.goto('/passageiro?__e2ePassengerFresh=1');
+  await page.getByTestId('passenger-name-input').fill('Junior');
+  await page.getByRole('button', { name: 'Entrar' }).click();
+
+  await expect(page.getByTestId('spotify-controller-unlocked')).toBeVisible({ timeout: 8000 });
+  await expect(page.getByText('Músicas Liberadas!')).toBeVisible();
+
+  await expect.poll(
+    async () => page.evaluate(() => (window as any).__unlockSoundCount || 0),
+    { timeout: 8000 }
+  ).toBeGreaterThan(0);
+});
