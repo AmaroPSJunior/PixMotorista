@@ -237,7 +237,8 @@ export default function App() {
     }
   }, [viewMode, currentRide?.id, currentRide?.driverUid, passengerSessions, activeSessionId]);
 
-  // Passenger entry is frictionless, but only inside a valid active ride.
+  // Passenger access stays locked until the anonymous identity is identified by name.
+  // We intentionally do not create a generic "Passageiro" session.
   useEffect(() => {
     if (
       viewMode !== 'passenger' ||
@@ -245,58 +246,35 @@ export default function App() {
       !currentRide ||
       currentRide.status !== 'active' ||
       (rideIdFromUrl && currentRide.id !== rideIdFromUrl)
-    ) return;
-
-    const existing = passengerSessions.find(
-      (session) =>
-        session.authUid === passengerAuthUid &&
-        session.rideId === currentRide.id
-    );
-
-    if (existing && !forceNewPassengerSession) {
-      setActiveSessionId(existing.status === 'active' ? existing.id : null);
-      try {
-        localStorage.setItem('pix_registered_session_id', existing.id);
-      } catch {}
+    ) {
+      setActiveSessionId(null);
       return;
     }
 
-    const sessionId = forceNewPassengerSession
-      ? `sess_${currentRide.id}_${passengerAuthUid}_${Date.now()}`
-      : `sess_${currentRide.id}_${passengerAuthUid}`;
-    const nowIso = new Date().toISOString();
-    const session: PassengerSession = {
-      id: sessionId,
-      passengerName: 'Passageiro',
-      browserId: getOrCreateBrowserId(),
-      createdAt: nowIso,
-      lastActiveAt: nowIso,
-      status: 'active',
-      unlockedServices: normalizeServiceIds(currentRide.defaultUnlockedServices || []),
-      hasMusicUnlocked: normalizeServiceIds(
-        currentRide.defaultUnlockedServices || []
-      ).includes(SERVICE_IDS.MUSIC),
-      ridePrice: currentRide.price,
-      rideId: currentRide.id,
-      driverUid: currentRide.driverUid,
-      driverEmail: currentRide.driverEmail,
-      authUid: passengerAuthUid,
-    };
+    const existingNamedActive = passengerSessions.find(
+      (session) =>
+        session.authUid === passengerAuthUid &&
+        session.rideId === currentRide.id &&
+        session.status === 'active' &&
+        Boolean(session.passengerName?.trim()) &&
+        session.passengerName.trim().toLowerCase() !== 'passageiro'
+    );
 
-    savePassengerSession(session);
-    setActiveSessionId(sessionId);
-    setForceNewPassengerSession(false);
-    try {
-      localStorage.setItem('pix_registered_session_id', sessionId);
-      localStorage.removeItem('pix_registered_passenger_name');
-    } catch {}
+    if (existingNamedActive) {
+      setActiveSessionId(existingNamedActive.id);
+      try {
+        localStorage.setItem('pix_registered_session_id', existingNamedActive.id);
+        localStorage.setItem('pix_registered_passenger_name', existingNamedActive.passengerName);
+      } catch {}
+    } else {
+      setActiveSessionId(null);
+    }
   }, [
     viewMode,
     passengerAuthUid,
     passengerSessions,
     currentRide,
     rideIdFromUrl,
-    forceNewPassengerSession,
   ]);
 
   // Restore the authenticated driver from Firebase Auth, never from localStorage.
@@ -391,6 +369,75 @@ export default function App() {
       : undefined);
 
   const displayPassengerName = currentPassengerSession?.passengerName || rawPassengerName || 'Passageiro';
+
+  const handlePassengerIdentify = async (rawName: string) => {
+    const name = rawName.trim();
+    if (!name) throw new Error('Digite seu nome para continuar.');
+    if (!passengerAuthUid) {
+      throw new Error('A sessão segura do passageiro ainda está sendo iniciada. Tente novamente em instantes.');
+    }
+    if (!currentRide || currentRide.status !== 'active') {
+      throw new Error('Aguardando uma corrida ativa do motorista.');
+    }
+
+    const nowIso = new Date().toISOString();
+    const existingActive = passengerSessions.find(
+      (session) =>
+        session.authUid === passengerAuthUid &&
+        session.rideId === currentRide.id &&
+        session.status === 'active'
+    );
+
+    if (existingActive) {
+      await savePassengerSession({
+        ...existingActive,
+        passengerName: name,
+        browserId: getOrCreateBrowserId(),
+        lastActiveAt: nowIso,
+      });
+      setActiveSessionId(existingActive.id);
+      try {
+        localStorage.setItem('pix_registered_session_id', existingActive.id);
+        localStorage.setItem('pix_registered_passenger_name', name);
+      } catch {}
+      return;
+    }
+
+    const sessionId = 'sess_' + currentRide.id + '_' + passengerAuthUid + '_' + Date.now();
+    const unlockedServices = normalizeServiceIds(currentRide.defaultUnlockedServices || []);
+    const session: PassengerSession = {
+      id: sessionId,
+      passengerName: name,
+      browserId: getOrCreateBrowserId(),
+      createdAt: nowIso,
+      lastActiveAt: nowIso,
+      status: 'active',
+      unlockedServices,
+      hasMusicUnlocked: unlockedServices.includes(SERVICE_IDS.MUSIC),
+      ridePrice: currentRide.price,
+      rideId: currentRide.id,
+      driverUid: currentRide.driverUid,
+      driverEmail: currentRide.driverEmail,
+      authUid: passengerAuthUid,
+    };
+
+    await savePassengerSession(session);
+    setActiveSessionId(sessionId);
+    try {
+      localStorage.setItem('pix_registered_session_id', sessionId);
+      localStorage.setItem('pix_registered_passenger_name', name);
+    } catch {}
+  };
+
+  const passengerHasNamedActiveSession =
+    viewMode !== 'passenger' ||
+    Boolean(
+      currentPassengerSession &&
+        currentPassengerSession.status === 'active' &&
+        currentPassengerSession.passengerName?.trim() &&
+        currentPassengerSession.passengerName.trim().toLowerCase() !== 'passageiro'
+    );
+
   const isPassengerExitE2E =
     isDevEnv &&
     typeof window !== 'undefined' &&
@@ -475,10 +522,10 @@ export default function App() {
   const allUnlockedServicesList = normalizeServiceIds(currentSessionUnlocked);
 
   const passengerHasMusicUnlocked = Boolean(
-    currentPassengerSession
-      ? currentPassengerSession.unlockedServices.includes(SERVICE_IDS.MUSIC) ||
-        currentPassengerSession.hasMusicUnlocked
-      : localUnlockedServices.includes(SERVICE_IDS.MUSIC)
+    localUnlockedServices.includes(SERVICE_IDS.MUSIC) ||
+      (currentPassengerSession &&
+        (currentPassengerSession.unlockedServices.includes(SERVICE_IDS.MUSIC) ||
+          currentPassengerSession.hasMusicUnlocked))
   );
 
   const effectiveMusicUnlocked =
@@ -1069,6 +1116,8 @@ export default function App() {
           onSetActiveSessionId={setActiveSessionId}
           isDevEnv={isDevEnv}
           driverEmail={getEffectiveDriverEmail(driver.googleEmail)}
+          requirePassengerIdentification={viewMode === 'passenger' && !passengerHasNamedActiveSession}
+          onIdentifyPassenger={handlePassengerIdentify}
         />
 
         {/* Requirement 1: Pix Section with QR Code and Email Pix Key */}
