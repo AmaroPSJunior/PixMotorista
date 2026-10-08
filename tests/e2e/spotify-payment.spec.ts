@@ -435,3 +435,54 @@ test('dois dispositivos: motorista libera Spotify e passageiro recebe em tempo r
 
   await context.close();
 });
+
+
+test('refresh mantém passageiro, botão Sair e recurso liberado sem pedir nome novamente', async ({ page }) => {
+  const session = {
+    id: 'sess_refresh_stable',
+    passengerName: 'Junior',
+    browserId: 'browser-refresh',
+    createdAt: new Date().toISOString(),
+    lastActiveAt: new Date().toISOString(),
+    status: 'active',
+    unlockedServices: ['spotify_music'],
+    hasMusicUnlocked: true,
+    authUid: 'e2e-anonymous-passenger',
+    resourceRevision: 3,
+    lastResourceChangeAt: new Date().toISOString(),
+  };
+
+  await page.addInitScript(({ session }) => {
+    localStorage.setItem('pix_registered_session_id', session.id);
+    localStorage.setItem('pix_registered_passenger_name', session.passengerName);
+    localStorage.setItem('pix_passenger_session_cache', JSON.stringify(session));
+  }, { session });
+
+  await page.route('**/api/spotify/status', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ configured: true, hasToken: false, isIntegrated: false, userProfile: null }),
+    });
+  });
+
+  await page.route('**/api/passenger/session/current?**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, session }),
+    });
+  });
+
+  await page.goto('/passageiro?__e2ePassengerFresh=1');
+  await expect(page.getByTestId('passenger-exit-button')).toBeVisible();
+  await expect(page.getByTestId('spotify-controller-unlocked')).toBeVisible();
+  await expect(page.getByTestId('passenger-login-gate')).toHaveCount(0);
+
+  await page.reload();
+
+  await expect(page.getByTestId('passenger-exit-button')).toBeVisible({ timeout: 3000 });
+  await expect(page.getByTestId('spotify-controller-unlocked')).toBeVisible({ timeout: 3000 });
+  await expect(page.getByText('Junior')).toBeVisible();
+  await expect(page.getByTestId('passenger-login-gate')).toHaveCount(0);
+});
