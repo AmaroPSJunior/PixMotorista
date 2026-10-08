@@ -233,8 +233,9 @@ export function subscribeServices(onUpdate: (services: AdditionalService[]) => v
       if (!snapshot.empty) {
         const servicesList: AdditionalService[] = [];
         snapshot.forEach((d) => {
+          if (d.id === 'extra_stop') return;
           const data = d.data();
-          const defaultType: 'servico' | 'produto' = (d.id === 'wifi' || d.id === 'spotify_music' || d.id === 'charger' || d.id === 'extra_stop') ? 'servico' : 'produto';
+          const defaultType: 'servico' | 'produto' = (d.id === 'wifi' || d.id === 'spotify_music' || d.id === 'charger') ? 'servico' : 'produto';
           servicesList.push({
             id: d.id,
             title: data.title || '',
@@ -247,7 +248,7 @@ export function subscribeServices(onUpdate: (services: AdditionalService[]) => v
             isPopular: data.isPopular !== undefined ? Boolean(data.isPopular) : false,
           });
         });
-        const defaultOrder = ['wifi', 'spotify_music', 'charger', 'extra_stop', 'agua', 'snacks'];
+        const defaultOrder = ['wifi', 'spotify_music', 'charger', 'agua', 'snacks'];
         servicesList.sort((a, b) => {
           const indexA = defaultOrder.indexOf(a.id);
           const indexB = defaultOrder.indexOf(b.id);
@@ -275,7 +276,7 @@ export async function saveAllServices(services: AdditionalService[]) {
     const snapshot = await getDocs(colRef);
     const batch = writeBatch(db);
 
-    const activeIds = new Set(services.map((s) => s.id));
+    const activeIds = new Set(services.filter((s) => s.id !== 'extra_stop').map((s) => s.id));
 
     // Delete documents from Firestore that are no longer in the services array
     snapshot.forEach((d) => {
@@ -285,9 +286,9 @@ export async function saveAllServices(services: AdditionalService[]) {
     });
 
     // Add or update current services in Firestore
-    services.forEach((s) => {
+    services.filter((s) => s.id !== 'extra_stop').forEach((s) => {
       const docRef = doc(db, 'services', s.id);
-      const defaultType: 'servico' | 'produto' = (s.id === 'wifi' || s.id === 'spotify_music' || s.id === 'charger' || s.id === 'extra_stop') ? 'servico' : 'produto';
+      const defaultType: 'servico' | 'produto' = (s.id === 'wifi' || s.id === 'spotify_music' || s.id === 'charger') ? 'servico' : 'produto';
       batch.set(docRef, sanitizeFirestoreData({
         id: s.id,
         title: s.title || '',
