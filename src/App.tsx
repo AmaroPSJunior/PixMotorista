@@ -208,7 +208,7 @@ export default function App() {
         driverMode: viewMode === 'driver' && isGoogleAuthenticated,
         authUid: passengerAuthUid,
         driverUid: driver.authUid || null,
-        rideId: viewMode === 'passenger' ? (rideIdFromUrl || currentRide?.id || null) : null,
+        rideId: null,
       }
     );
 
@@ -269,28 +269,45 @@ export default function App() {
     }
   }, [viewMode, currentRide?.id, currentRide?.driverUid, passengerSessions, activeSessionId]);
 
-  // Passenger access stays locked until the anonymous identity is identified by name.
-  // We intentionally do not create a generic "Passageiro" session.
+  // Restore the existing named passenger session after refresh. The session remains valid
+  // until inactivity timeout or explicit logout, even when it was created before a ride.
   useEffect(() => {
-    if (
-      viewMode !== 'passenger' ||
-      !passengerAuthUid ||
-      !currentRide ||
-      currentRide.status !== 'active' ||
-      (rideIdFromUrl && currentRide.id !== rideIdFromUrl)
-    ) {
+    if (viewMode !== 'passenger' || !passengerAuthUid) {
       setActiveSessionId(null);
       return;
     }
 
-    const existingNamedActive = passengerSessions.find(
-      (session) =>
-        session.authUid === passengerAuthUid &&
-        session.rideId === currentRide.id &&
-        session.status === 'active' &&
-        Boolean(session.passengerName?.trim()) &&
-        session.passengerName.trim().toLowerCase() !== 'passageiro'
-    );
+    const timeoutMs = Math.max(1, sessionSettings.autoExpireMinutes || 30) * 60_000;
+    const now = Date.now();
+    const isStillValid = (session: PassengerSession) => {
+      if (session.status !== 'active') return false;
+      if (!session.passengerName?.trim() || session.passengerName.trim().toLowerCase() === 'passageiro') {
+        return false;
+      }
+      const lastActive = new Date(session.lastActiveAt || session.createdAt).getTime();
+      return Number.isFinite(lastActive) && now - lastActive <= timeoutMs;
+    };
+
+    const storedSessionId =
+      typeof localStorage !== 'undefined'
+        ? localStorage.getItem('pix_registered_session_id') || ''
+        : '';
+
+    const existingNamedActive =
+      (storedSessionId
+        ? passengerSessions.find(
+            (session) =>
+              session.id === storedSessionId &&
+              session.authUid === passengerAuthUid &&
+              isStillValid(session)
+          )
+        : undefined) ||
+      passengerSessions.find(
+        (session) =>
+          session.authUid === passengerAuthUid &&
+          session.browserId === getOrCreateBrowserId() &&
+          isStillValid(session)
+      );
 
     if (existingNamedActive) {
       setActiveSessionId(existingNamedActive.id);
@@ -305,8 +322,7 @@ export default function App() {
     viewMode,
     passengerAuthUid,
     passengerSessions,
-    currentRide,
-    rideIdFromUrl,
+    sessionSettings.autoExpireMinutes,
   ]);
 
   // Restore the authenticated driver from Firebase Auth, never from localStorage.
@@ -368,20 +384,36 @@ export default function App() {
       ? localStorage.getItem('pix_registered_session_id') || ''
       : '';
 
-  const realCurrentPassengerSession = passengerSessions.find((s) => {
-    if (s.status !== 'active') return false;
-    const effectiveRideId = rideIdFromUrl || currentRide?.id;
-    if (effectiveRideId && s.rideId !== effectiveRideId) return false;
-    if (viewMode === 'passenger' && passengerAuthUid && s.authUid !== passengerAuthUid) return false;
-    if (registeredSessionId && s.id === registeredSessionId) {
+  const passengerSessionTimeoutMs =
+    Math.max(1, sessionSettings.autoExpireMinutes || 30) * 60_000;
+
+  const isCurrentPassengerSessionValid = (session: PassengerSession) => {
+    if (session.status !== 'active') return false;
+    const lastActiveMs = new Date(session.lastActiveAt || session.createdAt).getTime();
+    if (!Number.isFinite(lastActiveMs)) return false;
+    return Date.now() - lastActiveMs <= passengerSessionTimeoutMs;
+  };
+
+  const passengerOwnedSessions = passengerSessions.filter(
+    (session) =>
+      (!passengerAuthUid || session.authUid === passengerAuthUid) &&
+      isCurrentPassengerSessionValid(session)
+  );
+
+  const realCurrentPassengerSession =
+    (registeredSessionId
+      ? passengerOwnedSessions.find((session) => session.id === registeredSessionId)
+      : undefined) ||
+    passengerOwnedSessions.find((session) => {
+      if (session.browserId !== currentBrowserId) return false;
+      if (
+        rawPassengerName &&
+        session.passengerName.trim().toLowerCase() !== rawPassengerName.toLowerCase()
+      ) {
+        return false;
+      }
       return true;
-    }
-    if (s.browserId !== currentBrowserId) return false;
-    if (rawPassengerName && s.passengerName.trim().toLowerCase() !== rawPassengerName.toLowerCase()) {
-      return false;
-    }
-    return true;
-  });
+    });
 
   const currentPassengerSession =
     realCurrentPassengerSession ||
@@ -458,6 +490,90 @@ export default function App() {
         currentPassengerSession.passengerName?.trim() &&
         currentPassengerSession.passengerName.trim().toLowerCase() !== 'passageiro'
     );
+
+  useEffect(() => {
+    if (
+      viewMode !== 'passenger' ||
+      !currentPassengerSession ||
+      !passengerAuthUid ||
+      !passengerHasNamedActiveSession
+    ) {
+      return;
+    }
+
+    let lastSentAt = 0;
+    let cancelled = false;
+
+    const sendHeartbeat = async (force = false) => {
+      const now = Date.now();
+      if (!force && now - lastSentAt < 60_000) return;
+      lastSentAt = now;
+
+      try {
+        const token = await getCurrentIdToken();
+        const response = await fetch('/api/passenger/session/heartbeat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + token,
+          },
+          body: JSON.stringify({ sessionId: currentPassengerSession.id }),
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (cancelled) return;
+
+        if (response.status === 410) {
+          setPassengerSessions((prev) =>
+            prev.map((session) =>
+              session.id === currentPassengerSession.id
+                ? { ...session, status: 'expired' }
+                : session
+            )
+          );
+          setActiveSessionId(null);
+          return;
+        }
+
+        if (response.ok && payload?.session) {
+          setPassengerSessions((prev) =>
+            prev.map((session) =>
+              session.id === payload.session.id ? payload.session : session
+            )
+          );
+        }
+      } catch (error) {
+        console.warn('Falha ao atualizar atividade do passageiro:', error);
+      }
+    };
+
+    const activityHandler = () => {
+      void sendHeartbeat(false);
+    };
+    const visibilityHandler = () => {
+      if (document.visibilityState === 'visible') void sendHeartbeat(true);
+    };
+
+    void sendHeartbeat(true);
+    window.addEventListener('pointerdown', activityHandler, { passive: true });
+    window.addEventListener('keydown', activityHandler);
+    window.addEventListener('touchstart', activityHandler, { passive: true });
+    document.addEventListener('visibilitychange', visibilityHandler);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('pointerdown', activityHandler);
+      window.removeEventListener('keydown', activityHandler);
+      window.removeEventListener('touchstart', activityHandler);
+      document.removeEventListener('visibilitychange', visibilityHandler);
+    };
+  }, [
+    viewMode,
+    passengerAuthUid,
+    currentPassengerSession?.id,
+    passengerHasNamedActiveSession,
+    sessionSettings.autoExpireMinutes,
+  ]);
 
   const isPassengerExitE2E =
     isDevEnv &&
