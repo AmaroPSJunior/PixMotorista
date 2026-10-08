@@ -146,6 +146,35 @@ test('primeiro acesso do passageiro fica bloqueado até informar o nome', async 
     });
   });
 
+  await page.route('**/api/passenger/session/start', async (route) => {
+    const payload = JSON.parse(route.request().postData() || '{}');
+    expect(payload.passengerName).toBe('Junior');
+    expect(payload.rideId).toBe('');
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        waitingForRide: true,
+        session: {
+          id: 'sess_waiting_e2e',
+          passengerName: 'Junior',
+          browserId: payload.browserId || 'e2e-browser',
+          createdAt: new Date().toISOString(),
+          lastActiveAt: new Date().toISOString(),
+          status: 'active',
+          unlockedServices: [],
+          hasMusicUnlocked: false,
+          ridePrice: 0,
+          rideId: '',
+          driverUid: '',
+          driverEmail: '',
+          authUid: 'e2e-anonymous-passenger',
+        },
+      }),
+    });
+  });
+
   await page.goto('/passageiro?__e2ePassengerFresh=1');
 
   const gate = page.getByTestId('passenger-login-gate');
@@ -153,4 +182,11 @@ test('primeiro acesso do passageiro fica bloqueado até informar o nome', async 
   await expect(page.getByText('Como podemos te chamar?')).toBeVisible();
   await expect(page.getByTestId('passenger-name-input')).toBeVisible();
   await expect(page.getByTestId('passenger-exit-button')).toHaveCount(0);
+
+  await page.getByTestId('passenger-name-input').fill('Junior');
+  await page.getByRole('button', { name: 'Entrar' }).click();
+
+  await expect(gate).toBeHidden();
+  await expect(page.getByText('Junior')).toBeVisible();
+  await expect(page.getByTestId('passenger-exit-button')).toBeVisible();
 });
