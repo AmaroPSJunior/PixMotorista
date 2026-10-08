@@ -117,6 +117,8 @@ export default function App() {
   const [sessionSettings, setSessionSettings] = useState<SessionSettings>(DEFAULT_SESSION_SETTINGS);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [passengerAuthUid, setPassengerAuthUid] = useState<string | null>(null);
+  const [passengerAuthResolved, setPassengerAuthResolved] = useState<boolean>(false);
+  const [passengerSessionsResolved, setPassengerSessionsResolved] = useState<boolean>(false);
   const [currentRide, setCurrentRide] = useState<Ride | null>(null);
   const [driverRides, setDriverRides] = useState<Ride[]>([]);
   const rideIdFromUrl = getRideIdFromUrl();
@@ -164,17 +166,26 @@ export default function App() {
   useEffect(() => {
     if (viewMode !== 'passenger' || isGoogleAuthenticated) {
       setPassengerAuthUid(null);
+      setPassengerAuthResolved(viewMode !== 'passenger');
+      setPassengerSessionsResolved(viewMode !== 'passenger');
       return;
     }
 
     let active = true;
+    setPassengerAuthResolved(false);
+    setPassengerSessionsResolved(false);
+
     ensurePassengerAuth()
       .then((uid) => {
-        if (active) setPassengerAuthUid(uid);
+        if (!active) return;
+        setPassengerAuthUid(uid);
+        setPassengerAuthResolved(true);
       })
       .catch((error) => {
         console.warn('Não foi possível iniciar a sessão segura do passageiro:', error);
-        if (active) setPassengerAuthUid(null);
+        if (!active) return;
+        setPassengerAuthUid(null);
+        setPassengerAuthResolved(true);
       });
 
     return () => {
@@ -184,6 +195,9 @@ export default function App() {
 
   // Real-time synchronization with Firebase Firestore
   useEffect(() => {
+    if (viewMode === 'passenger' && passengerAuthUid) {
+      setPassengerSessionsResolved(false);
+    }
     // Priority: URL query param (?driver=...) -> logged-in Google email -> default printed QR code (arcamos.j@gmail.com)
     const activeEmail =
       viewMode === 'driver'
@@ -203,6 +217,9 @@ export default function App() {
     const unsubSessions = subscribePassengerSessions(
       (sessionsList) => {
         setPassengerSessions(sessionsList);
+        if (viewMode !== 'passenger' || passengerAuthUid) {
+          setPassengerSessionsResolved(true);
+        }
       },
       {
         driverMode: viewMode === 'driver' && isGoogleAuthenticated,
@@ -443,11 +460,13 @@ export default function App() {
       typeof window !== 'undefined' &&
       new URLSearchParams(window.location.search).has('__e2ePassengerFresh');
 
-    const effectivePassengerAuthUid =
+    let effectivePassengerAuthUid =
       passengerAuthUid || (isFreshE2E ? 'e2e-anonymous-passenger' : null);
 
-    if (!effectivePassengerAuthUid) {
-      throw new Error('A sessão segura do passageiro ainda está sendo iniciada. Tente novamente em instantes.');
+    if (!effectivePassengerAuthUid && !isFreshE2E) {
+      effectivePassengerAuthUid = await ensurePassengerAuth();
+      setPassengerAuthUid(effectivePassengerAuthUid);
+      setPassengerAuthResolved(true);
     }
 
     const token = isFreshE2E ? 'e2e-token' : await getCurrentIdToken();
@@ -490,6 +509,16 @@ export default function App() {
         currentPassengerSession.passengerName?.trim() &&
         currentPassengerSession.passengerName.trim().toLowerCase() !== 'passageiro'
     );
+
+  const isFreshPassengerE2E =
+    isDevEnv &&
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).has('__e2ePassengerFresh');
+
+  const passengerEntryResolved =
+    viewMode !== 'passenger' ||
+    isFreshPassengerE2E ||
+    (passengerAuthResolved && passengerSessionsResolved);
 
   useEffect(() => {
     if (
@@ -1253,7 +1282,11 @@ export default function App() {
           onSetActiveSessionId={setActiveSessionId}
           isDevEnv={isDevEnv}
           driverEmail={getEffectiveDriverEmail(driver.googleEmail)}
-          requirePassengerIdentification={viewMode === 'passenger' && !passengerHasNamedActiveSession}
+          requirePassengerIdentification={
+            viewMode === 'passenger' &&
+            passengerEntryResolved &&
+            !passengerHasNamedActiveSession
+          }
           onIdentifyPassenger={handlePassengerIdentify}
           onSessionUpdated={(updatedSession) => {
             setPassengerSessions((prev) =>
