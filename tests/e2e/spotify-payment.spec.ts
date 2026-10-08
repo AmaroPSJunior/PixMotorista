@@ -118,7 +118,7 @@ test('passageiro encerra sessão e volta para cadastro de novo nome', async ({ p
 
   const thanksModal = page.getByTestId('passenger-thanks-modal');
   await expect(thanksModal).toBeVisible();
-  await expect(page.getByText('Obrigado pela viagem!')).toBeVisible();
+  await expect(page.getByText('Obrigado!')).toBeVisible();
 
   await page.getByTestId('passenger-thanks-ok').click();
 
@@ -427,6 +427,8 @@ test('dois dispositivos: motorista libera Spotify e passageiro recebe em tempo r
 
   await expect(passengerPage.getByTestId('spotify-controller-unlocked')).toBeVisible({ timeout: 7000 });
   await expect(passengerPage.getByText('Músicas Liberadas!')).toBeVisible();
+  await expect(passengerPage.getByTestId('resource-unlock-modal')).toBeVisible();
+  await expect(passengerPage.getByText('Escolha de músicas foi liberado pelo motorista.')).toBeVisible();
 
   await expect.poll(
     async () => passengerPage.evaluate(() => (window as any).__unlockSoundCount || 0),
