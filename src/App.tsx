@@ -42,6 +42,7 @@ import { getNewlyUnlockedServiceIds, normalizeServiceId, normalizeServiceIds, SE
 import { isPassengerCloseTerminalStatus } from './domain/businessRules';
 import { clearPassengerSessionCache, readPassengerSessionCache, writePassengerSessionCache } from './utils/passengerSessionCache';
 
+// Release v1.4.22
 export default function App() {
   const isDevEnv = isDevEnvironment();
 
