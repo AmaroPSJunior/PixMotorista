@@ -48,6 +48,7 @@ import { DriverRidePresets } from './components/DriverRidePresets';
 import { useRideSession } from './state/useRideSession';
 import { getNewlyUnlockedServiceIds, normalizeServiceId, normalizeServiceIds, SERVICE_IDS } from './domain/serviceIds';
 import { isPassengerCloseTerminalStatus } from './domain/businessRules';
+import { clearPassengerSessionCache, readPassengerSessionCache, writePassengerSessionCache } from './utils/passengerSessionCache';
 
 export default function App() {
   const isDevEnv = isDevEnvironment();
@@ -116,7 +117,9 @@ export default function App() {
   const [isAuthResolved, setIsAuthResolved] = useState<boolean>(false);
 
   // Passenger Sessions State
-  const [passengerSessions, setPassengerSessions] = useState<PassengerSession[]>([]);
+  const [passengerSessions, setPassengerSessions] = useState<PassengerSession[]>(() =>
+    getExperienceFromUrl() === 'passenger' ? readPassengerSessionCache() : []
+  );
   const [sessionSettings, setSessionSettings] = useState<SessionSettings>(DEFAULT_SESSION_SETTINGS);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [passengerAuthUid, setPassengerAuthUid] = useState<string | null>(null);
@@ -237,7 +240,32 @@ export default function App() {
 
     const unsubSessions = subscribePassengerSessions(
       (sessionsList) => {
-        setPassengerSessions(sessionsList);
+        setPassengerSessions((previous) => {
+          if (viewMode !== 'passenger') return sessionsList;
+
+          const previousById = new Map<string, PassengerSession>(
+            previous.map((session) => [session.id, session] as [string, PassengerSession])
+          );
+
+          return sessionsList.map((incoming) => {
+            const cached = previousById.get(incoming.id);
+            if (!cached) return incoming;
+
+            const incomingRevision = Number(incoming.resourceRevision) || 0;
+            const cachedRevision = Number(cached.resourceRevision) || 0;
+            if (cachedRevision > incomingRevision) {
+              return {
+                ...incoming,
+                unlockedServices: cached.unlockedServices,
+                hasMusicUnlocked: cached.hasMusicUnlocked,
+                resourceRevision: cachedRevision,
+                lastResourceChangeAt: cached.lastResourceChangeAt,
+                updatedAt: cached.updatedAt,
+              };
+            }
+            return incoming;
+          });
+        });
         if (viewMode !== 'passenger' || passengerAuthUid) {
           setPassengerSessionsResolved(true);
         }
@@ -482,7 +510,7 @@ export default function App() {
   const displayPassengerName = currentPassengerSession?.passengerName || rawPassengerName || 'Passageiro';
 
   const handlePassengerIdentify = async (rawName: string) => {
-    void armPaymentSuccessSound();
+    await armPaymentSuccessSound();
     const name = rawName.trim();
     if (!name) throw new Error('Digite seu nome para continuar.');
 
@@ -525,6 +553,7 @@ export default function App() {
       return [session, ...withoutCurrent];
     });
     setActiveSessionId(session.id);
+    writePassengerSessionCache(session);
 
     try {
       localStorage.setItem('pix_registered_session_id', session.id);
@@ -550,6 +579,23 @@ export default function App() {
     viewMode !== 'passenger' ||
     isFreshPassengerE2E ||
     (passengerAuthResolved && passengerSessionsResolved);
+
+  useEffect(() => {
+    if (viewMode !== 'passenger') return;
+    if (currentPassengerSession?.status === 'active') {
+      writePassengerSessionCache(currentPassengerSession);
+    } else if (passengerEntryResolved && !currentPassengerSession) {
+      clearPassengerSessionCache();
+    }
+  }, [
+    viewMode,
+    currentPassengerSession?.id,
+    currentPassengerSession?.status,
+    currentPassengerSession?.lastActiveAt,
+    currentPassengerSession?.resourceRevision,
+    currentPassengerSession?.unlockedServices,
+    passengerEntryResolved,
+  ]);
 
   useEffect(() => {
     if (
@@ -682,6 +728,7 @@ export default function App() {
       localStorage.removeItem('pix_registered_passenger_name');
       localStorage.removeItem('pix_music_unlocked');
     } catch {}
+    clearPassengerSessionCache();
 
     setLocalUnlockedServices([]);
     setIsMusicUnlocked(false);
@@ -747,10 +794,15 @@ export default function App() {
         setPassengerSessions((prev) => {
           const exists = prev.some((session) => session.id === syncedSession.id);
           if (!exists) return [syncedSession, ...prev];
-          return prev.map((session) =>
-            session.id === syncedSession.id ? syncedSession : session
-          );
+          return prev.map((session) => {
+            if (session.id !== syncedSession.id) return session;
+
+            const previousRevision = Number(session.resourceRevision) || 0;
+            const incomingRevision = Number(syncedSession.resourceRevision) || 0;
+            return incomingRevision >= previousRevision ? syncedSession : session;
+          });
         });
+        writePassengerSessionCache(syncedSession);
       } catch (error) {
         console.warn('Falha no fallback de sincronização do passageiro:', error);
       }
@@ -778,7 +830,10 @@ export default function App() {
       return;
     }
 
-    const currentIds = normalizeServiceIds(currentPassengerSession.unlockedServices || []);
+    const currentIds = normalizeServiceIds([
+      ...(currentPassengerSession.unlockedServices || []),
+      ...(currentPassengerSession.hasMusicUnlocked ? [SERVICE_IDS.MUSIC] : []),
+    ]);
     const previous = previousRemoteUnlocksRef.current;
 
     if (!previous || previous.sessionId !== currentPassengerSession.id) {
@@ -1338,7 +1393,13 @@ export default function App() {
           isDevEnv={isDevEnv || viewMode === 'driver'}
           onGoogleLogout={() => setIsLogoutConfirmModalOpen(true)}
           onPassengerExit={handlePassengerExit}
-          passengerSessionActive={viewMode === 'passenger' && Boolean(currentPassengerSession)}
+          passengerSessionActive={
+            viewMode === 'passenger' &&
+            Boolean(
+              currentPassengerSession ||
+              (!passengerEntryResolved && registeredSessionId && rawPassengerName)
+            )
+          }
         />
       }
     >
