@@ -10,6 +10,7 @@ import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
 import QRCode from 'qrcode';
 import { buildPassengerClosedState } from './src/domain/businessRules';
+import { normalizeServiceId, normalizeServiceIds } from './src/domain/serviceIds';
 import firebaseClientConfig from './firebase-applet-config.json';
 
 dotenv.config();
@@ -209,6 +210,82 @@ app.get('/api/driver/passenger-sessions', async (req, res) => {
   } catch (error) {
     console.error('Erro ao listar sessões para motorista:', error);
     return res.status(401).json({ error: 'Não foi possível validar o motorista.' });
+  }
+});
+
+app.post('/api/driver/passenger-sessions/:sessionId/resources', async (req, res) => {
+  try {
+    if (!db || !adminAuth) {
+      return res.status(503).json({ error: 'Serviço de sessão indisponível.' });
+    }
+
+    const authHeader = req.get('authorization') || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!token) return res.status(401).json({ error: 'Autenticação do motorista ausente.' });
+
+    const decoded = await adminAuth.verifyIdToken(token);
+    const provider = decoded.firebase?.sign_in_provider;
+    if (provider === 'anonymous') {
+      return res.status(403).json({ error: 'Acesso restrito ao motorista autenticado.' });
+    }
+
+    const sessionId = String(req.params.sessionId || '').trim();
+    if (!sessionId) return res.status(400).json({ error: 'Sessão inválida.' });
+
+    const ref = db.collection('passenger_sessions').doc(sessionId);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      return res.status(404).json({ error: 'Sessão do passageiro não encontrada.' });
+    }
+
+    const data = snap.data() || {};
+    const current = normalizeServiceIds(
+      Array.isArray(data.unlockedServices) ? data.unlockedServices : []
+    );
+
+    const requestedIds = Array.isArray(req.body?.serviceIds)
+      ? req.body.serviceIds
+      : [req.body?.serviceId];
+
+    const canonicalIds = normalizeServiceIds(
+      requestedIds
+        .map((value: any) => normalizeServiceId(String(value || '')))
+        .filter(Boolean)
+    );
+
+    if (canonicalIds.length === 0) {
+      return res.status(400).json({ error: 'Nenhum recurso informado.' });
+    }
+
+    const unlock = req.body?.unlock !== false;
+    let updated = [...current];
+
+    if (unlock) {
+      updated = normalizeServiceIds([...updated, ...canonicalIds]);
+    } else {
+      const remove = new Set(canonicalIds);
+      updated = updated.filter((id) => !remove.has(id));
+    }
+
+    const payload = {
+      unlockedServices: updated,
+      hasMusicUnlocked: updated.includes('spotify_music'),
+      updatedAt: new Date().toISOString(),
+    };
+
+    await ref.set(payload, { merge: true });
+
+    return res.json({
+      success: true,
+      session: {
+        id: sessionId,
+        ...data,
+        ...payload,
+      },
+    });
+  } catch (error) {
+    console.error('Erro ao atualizar recursos do passageiro:', error);
+    return res.status(500).json({ error: 'Não foi possível atualizar os recursos do passageiro.' });
   }
 });
 
