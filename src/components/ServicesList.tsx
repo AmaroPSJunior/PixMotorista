@@ -271,7 +271,6 @@ const getItemType = (service: AdditionalService): 'servico' | 'produto' => {
             return (
               <div
                 key={service.id}
-                id={isService ? `passenger-resource-${service.id}` : undefined}
                 data-service-id={service.id}
                 onClick={() => handleCardClick(service, isUnlocked)}
                 className={`group relative p-3.5 sm:p-4 rounded-xl border transition-all flex items-center justify-between gap-3 ${
