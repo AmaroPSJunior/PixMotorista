@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildPassengerClosedState, canDriverManageRide, canReactivatePassenger, isPassengerCloseTerminalStatus, isRideAccessible, isVerifiedPaymentForRide, PASSENGER_REACTIVATION_MS } from '../src/domain/businessRules';
+import { getNewlyUnlockedServiceIds } from '../src/domain/serviceIds';
 import { Ride } from '../src/types';
 
 const baseRide: Ride = {
@@ -80,4 +81,16 @@ test('404 from close is treated as already-closed logout, while auth/server erro
   assert.equal(isPassengerCloseTerminalStatus(401), false);
   assert.equal(isPassengerCloseTerminalStatus(403), false);
   assert.equal(isPassengerCloseTerminalStatus(500), false);
+});
+
+
+test('detects only newly unlocked canonical services from remote updates', () => {
+  assert.deepEqual(
+    getNewlyUnlockedServiceIds(['wifi'], ['1', 'spotify_music', 'charger']),
+    ['spotify_music', 'charger']
+  );
+  assert.deepEqual(
+    getNewlyUnlockedServiceIds(['spotify_music'], ['2']),
+    []
+  );
 });
