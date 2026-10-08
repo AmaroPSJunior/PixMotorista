@@ -61,17 +61,6 @@ export const DEFAULT_SERVICES: AdditionalService[] = [
     category: 'cortesia',
     isActive: true,
   },
-  {
-    id: 'extra_stop',
-    title: 'Parada Extra no Trajeto',
-    description: 'Parada rápida de até 5 min em farmácia, mercado ou caixa eletrônico.',
-    price: 5.0,
-    iconName: 'MapPin',
-    isPopular: false,
-    itemType: 'servico',
-    category: 'espera',
-    isActive: true,
-  },
   // Categoria: PRODUTOS (Consumíveis)
   {
     id: 'water_bottle',
