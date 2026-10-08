@@ -439,6 +439,9 @@ export function subscribePassengerSessions(
           authUid: data.authUid || '',
           closedAt: data.closedAt || undefined,
           reactivationExpiresAt: data.reactivationExpiresAt || undefined,
+          updatedAt: data.updatedAt || undefined,
+          lastResourceChangeAt: data.lastResourceChangeAt || undefined,
+          resourceRevision: Number(data.resourceRevision) || 0,
         });
       });
       // Sort newest first
