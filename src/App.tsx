@@ -13,7 +13,7 @@ import { MercadoPagoSettingsModal } from './components/MercadoPagoSettingsModal'
 import { MercadoPagoModal } from './components/MercadoPagoModal';
 import { LogoutConfirmModal } from './components/LogoutConfirmModal';
 import { DEFAULT_DRIVER_PROFILE, DEFAULT_SERVICES } from './data/defaultData';
-import { DriverProfile, AdditionalService, MercadoPagoPayment, PassengerSession, SessionSettings, Ride, getItemType } from './types';
+import { DriverProfile, AdditionalService, MercadoPagoPayment, PassengerSession, SessionSettings, getItemType } from './types';
 import { HelpCircle, ShieldCheck, Eye, Smartphone, ArrowRight, Sparkles, LogOut, Database, Users } from 'lucide-react';
 import { armPaymentSuccessSound, playPaymentSuccessSound } from './utils/audio';
 import { PassengerSessionManager } from './components/PassengerSessionManager';
@@ -31,20 +31,12 @@ import {
   toggleSessionServiceUnlock,
   savePassengerSession,
   recordPurchasedProductsToSession,
-  subscribeRide,
-  subscribeActiveRideForPassenger,
-  subscribeDriverRides,
-  saveRide,
-  updateRideStatus,
 } from './lib/firebase';
 
-import { isDevEnvironment, getDriverEmailFromUrl, getEffectiveDriverEmail, getExperienceFromUrl, getRideIdFromUrl, navigateToExperience, getPublicPassengerUrl } from './utils/urlHelper';
+import { isDevEnvironment, getDriverEmailFromUrl, getEffectiveDriverEmail, getExperienceFromUrl, navigateToExperience, getPublicPassengerUrl } from './utils/urlHelper';
 import { AuthenticatedDriver, ensurePassengerAuth, getCurrentIdToken, signOutDriver, signOutPassenger, subscribeDriverAuth } from './lib/auth';
 import { DriverApp } from './views/DriverApp';
 import { PassengerApp } from './views/PassengerApp';
-import { DriverRidePanel } from './components/DriverRidePanel';
-import { DriverHistorySummary } from './components/DriverHistorySummary';
-import { DriverRidePresets } from './components/DriverRidePresets';
 import { useRideSession } from './state/useRideSession';
 import { getNewlyUnlockedServiceIds, normalizeServiceId, normalizeServiceIds, SERVICE_IDS } from './domain/serviceIds';
 import { isPassengerCloseTerminalStatus } from './domain/businessRules';
@@ -91,12 +83,13 @@ export default function App() {
   const [isLogoutConfirmModalOpen, setIsLogoutConfirmModalOpen] = useState<boolean>(false);
   const [isMercadoPagoSettingsModalOpen, setIsMercadoPagoSettingsModalOpen] = useState<boolean>(false);
   const [showPassengerThanksModal, setShowPassengerThanksModal] = useState<boolean>(false);
+  const [resourceUnlockNotice, setResourceUnlockNotice] = useState<string[]>([]);
   const [forceNewPassengerSession, setForceNewPassengerSession] = useState<boolean>(false);
 
   // Mercado Pago Checkout Modal State
   const [isMpModalOpen, setIsMpModalOpen] = useState<boolean>(false);
   const [mpModalAmount, setMpModalAmount] = useState<number>(0);
-  const [mpModalDescription, setMpModalDescription] = useState<string>('Serviços de Corrida Moto / Extras');
+  const [mpModalDescription, setMpModalDescription] = useState<string>('Serviços e produtos a bordo');
   const [mpModalServiceIds, setMpModalServiceIds] = useState<string[]>([]);
 
   const saveLocalUnlockedServices = (newServices: string[]) => {
@@ -125,9 +118,6 @@ export default function App() {
   const [passengerAuthUid, setPassengerAuthUid] = useState<string | null>(null);
   const [passengerAuthResolved, setPassengerAuthResolved] = useState<boolean>(false);
   const [passengerSessionsResolved, setPassengerSessionsResolved] = useState<boolean>(false);
-  const [currentRide, setCurrentRide] = useState<Ride | null>(null);
-  const [driverRides, setDriverRides] = useState<Ride[]>([]);
-  const rideIdFromUrl = getRideIdFromUrl();
   const driverEmailFromUrl = getDriverEmailFromUrl();
 
   const [viewMode, setViewMode] = useState<'driver' | 'passenger'>(() => getExperienceFromUrl());
@@ -155,35 +145,6 @@ export default function App() {
     window.addEventListener('popstate', syncRoute);
     return () => window.removeEventListener('popstate', syncRoute);
   }, []);
-
-  useEffect(() => {
-    if (viewMode === 'passenger') {
-      if (!passengerAuthUid) {
-        setCurrentRide(null);
-        return () => {};
-      }
-      if (rideIdFromUrl) {
-        return subscribeRide(rideIdFromUrl, setCurrentRide);
-      }
-      return subscribeActiveRideForPassenger(setCurrentRide, {
-        driverUid: driver.authUid || null,
-        driverEmail: driverEmailFromUrl || driver.googleEmail || null,
-      });
-    }
-    return subscribeDriverRides(driver.authUid || null, (rides) => {
-      setDriverRides(rides);
-      const active = rides.find((ride) => ride.status === 'active') || null;
-      setCurrentRide(active);
-      if (active?.passengerSessionId) setActiveSessionId(active.passengerSessionId);
-    });
-  }, [
-    viewMode,
-    rideIdFromUrl,
-    passengerAuthUid,
-    driver.authUid,
-    driver.googleEmail,
-    driverEmailFromUrl,
-  ]);
 
   // Passengers use Firebase Anonymous Auth so Firestore can enforce per-session ownership
   // without asking the passenger to create an account.
@@ -291,7 +252,7 @@ export default function App() {
       unsubSessions();
       unsubSettings();
     };
-  }, [driver.googleEmail, driver.authUid, isGoogleAuthenticated, viewMode, passengerAuthUid, rideIdFromUrl, currentRide?.id]);
+  }, [driver.googleEmail, driver.authUid, isGoogleAuthenticated, viewMode, passengerAuthUid]);
 
   useEffect(() => {
     if (viewMode !== 'driver' || !isGoogleAuthenticated) return;
@@ -324,19 +285,6 @@ export default function App() {
       window.clearInterval(interval);
     };
   }, [viewMode, isGoogleAuthenticated]);
-
-  useEffect(() => {
-    if (viewMode !== 'driver' || !currentRide) return;
-    const linkedSession = passengerSessions.find(
-      (session) =>
-        session.status === 'active' &&
-        session.rideId === currentRide.id &&
-        (!currentRide.driverUid || session.driverUid === currentRide.driverUid)
-    );
-    if (linkedSession && linkedSession.id !== activeSessionId) {
-      setActiveSessionId(linkedSession.id);
-    }
-  }, [viewMode, currentRide?.id, currentRide?.driverUid, passengerSessions, activeSessionId]);
 
   // Restore the existing named passenger session after refresh. The session remains valid
   // until inactivity timeout or explicit logout, even when it was created before a ride.
@@ -541,7 +489,7 @@ export default function App() {
       body: JSON.stringify({
         passengerName: name,
         browserId: getOrCreateBrowserId(),
-        rideId: currentRide?.status === 'active' ? currentRide.id : '',
+        rideId: '',
       }),
     });
 
@@ -705,9 +653,9 @@ export default function App() {
             sessionId: currentPassengerSession!.id,
             passengerName: currentPassengerSession!.passengerName,
             browserId: currentPassengerSession!.browserId,
-            rideId: currentPassengerSession!.rideId || currentRide?.id || '',
-            driverUid: currentPassengerSession!.driverUid || currentRide?.driverUid || '',
-            driverEmail: currentPassengerSession!.driverEmail || currentRide?.driverEmail || '',
+            rideId: '',
+            driverUid: currentPassengerSession!.driverUid || '',
+            driverEmail: currentPassengerSession!.driverEmail || '',
             createdAt: currentPassengerSession!.createdAt,
           }),
         });
@@ -856,6 +804,13 @@ export default function App() {
     if (newlyUnlocked.length === 0) return;
 
     saveLocalUnlockedServices(newlyUnlocked);
+    setResourceUnlockNotice(newlyUnlocked);
+
+    const primaryResource = newlyUnlocked[0];
+    window.setTimeout(() => {
+      const target = document.getElementById('passenger-resource-' + primaryResource);
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
     if (newlyUnlocked.includes(SERVICE_IDS.MUSIC)) {
       setIsMusicUnlocked(true);
       try {
@@ -876,7 +831,7 @@ export default function App() {
 
   // Active passenger session unlocked services list from Firestore (authoritative)
   // Combine session-specific unlocks with global default unlocked services from sessionSettings
-  const defaultUnlocked = currentRide?.defaultUnlockedServices || sessionSettings.defaultUnlockedServices || [];
+  const defaultUnlocked = sessionSettings.defaultUnlockedServices || [];
   const currentSessionUnlocked = currentPassengerSession
     ? Array.from(new Set([...defaultUnlocked, ...currentPassengerSession.unlockedServices]))
     : Array.from(new Set(defaultUnlocked));
@@ -901,27 +856,6 @@ export default function App() {
 
   const effectiveWifiUnlocked =
     viewMode === 'driver' ? true : passengerHasWifiUnlocked;
-
-  // Firestore is authoritative for shared ride data; useRideSession is only a UI cache.
-  useEffect(() => {
-    const authoritativePrice = currentRide?.price ?? currentPassengerSession?.ridePrice;
-    if (authoritativePrice !== undefined && authoritativePrice !== ridePrice) {
-      setRidePrice(authoritativePrice);
-    }
-  }, [currentRide?.price, currentPassengerSession?.ridePrice, ridePrice]);
-
-  const handleUpdateRidePrice = (price: number) => {
-    setRidePrice(price);
-    if (currentRide) {
-      saveRide({ ...currentRide, price });
-    }
-    if (currentPassengerSession) {
-      savePassengerSession({
-        ...currentPassengerSession,
-        ridePrice: price,
-      });
-    }
-  };
 
   // Save updated driver profile to Firestore
   const handleSaveDriver = (updatedDriver: DriverProfile) => {
@@ -1015,139 +949,6 @@ export default function App() {
       savePassengerSession(newSession);
     }
   };
-
-  // Compute if ride is already paid for this passenger session
-  const isRidePaid = Boolean(
-    currentPassengerSession
-      ? currentPassengerSession.isRidePaid
-      : localRidePaidState
-  );
-
-  const paidRideAmount = currentPassengerSession
-    ? currentPassengerSession.paidRideAmount
-    : localPaidRideAmount;
-
-  const handleToggleRidePaid = () => {
-    const nextState = !isRidePaid;
-    setLocalRidePaidState(nextState);
-
-    let targetSession = currentPassengerSession || passengerSessions.find((s) => s.id === activeSessionId);
-    if (targetSession) {
-      savePassengerSession({
-        ...targetSession,
-        isRidePaid: nextState,
-        paidRideAmount: nextState ? (ridePrice || targetSession.paidRideAmount || 0) : 0,
-      });
-    }
-  };
-
-
-  const handleStartRide = async (price: number) => {
-    if (!driver.authUid || !driver.googleEmail) {
-      setIsGoogleAuthModalOpen(true);
-      return;
-    }
-
-    const existingActive =
-      currentRide?.status === 'active'
-        ? currentRide
-        : driverRides.find((ride) => ride.status === 'active');
-
-    if (existingActive) {
-      const updated = { ...existingActive, price: Math.max(0, price || existingActive.price || 0) };
-      await saveRide(updated);
-      setCurrentRide(updated);
-      setRidePrice(updated.price);
-      return;
-    }
-
-    const now = new Date();
-    const nowIso = now.toISOString();
-    const expiresAt = new Date(
-      now.getTime() + Math.max(1, sessionSettings.autoExpireMinutes || 30) * 60_000
-    ).toISOString();
-    const rideId = `ride_${driver.authUid.slice(0, 10)}_${Date.now()}`;
-
-    const newRide: Ride = {
-      id: rideId,
-      driverUid: driver.authUid,
-      driverEmail: driver.googleEmail.trim().toLowerCase(),
-      status: 'active',
-      paymentStatus: 'unpaid',
-      price: Math.max(0, price || 0),
-      createdAt: nowIso,
-      startedAt: nowIso,
-      expiresAt,
-      defaultUnlockedServices: normalizeServiceIds(
-        sessionSettings.defaultUnlockedServices || []
-      ),
-    };
-
-    await saveRide(newRide);
-    setCurrentRide(newRide);
-    setActiveSessionId(null);
-    setRidePrice(newRide.price);
-    setLocalRidePaidState(false);
-    setLocalPaidRideAmount(0);
-    setSelectedServiceIds([]);
-    setProductQuantities({});
-    setSelectedTip(0);
-  };
-
-  const handleEndRide = async () => {
-    const targetRide =
-      currentRide ||
-      driverRides.find((ride) => ride.status === 'active');
-
-    if (targetRide) {
-      const endedAt = new Date().toISOString();
-      await updateRideStatus(targetRide.id, 'completed', { endedAt });
-
-      const rideSessions = passengerSessions.filter(
-        (session) => session.rideId === targetRide.id && session.status === 'active'
-      );
-      await Promise.all(
-        rideSessions.map((session) =>
-          savePassengerSession({
-            ...session,
-            status: 'closed',
-            lastActiveAt: endedAt,
-          })
-        )
-      );
-    }
-
-    setCurrentRide(null);
-    setActiveSessionId(null);
-    setRidePrice(0);
-    setLocalRidePaidState(false);
-    setLocalPaidRideAmount(0);
-    setSelectedServiceIds([]);
-    setProductQuantities({});
-    setSelectedTip(0);
-  };
-
-  useEffect(() => {
-    if (
-      viewMode !== 'driver' ||
-      !isGoogleAuthenticated ||
-      !currentRide ||
-      currentRide.status !== 'active' ||
-      !currentRide.expiresAt
-    ) return;
-
-    const remaining = new Date(currentRide.expiresAt).getTime() - Date.now();
-    if (remaining <= 0) {
-      updateRideStatus(currentRide.id, 'expired', { endedAt: new Date().toISOString() });
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      updateRideStatus(currentRide.id, 'expired', { endedAt: new Date().toISOString() });
-    }, Math.min(remaining, 2_147_000_000));
-
-    return () => window.clearTimeout(timer);
-  }, [viewMode, isGoogleAuthenticated, currentRide?.id, currentRide?.status, currentRide?.expiresAt]);
 
   // Calculate sum of selected services and products
   const selectedServicesTotal = services.reduce((acc, curr) => {
@@ -1333,10 +1134,6 @@ export default function App() {
     }
   };
 
-  const activePassengerUrl = currentRide
-    ? getPublicPassengerUrl(driver.customPublicUrl, currentRide.driverEmail, currentRide.id)
-    : undefined;
-
   useEffect(() => {
     if (viewMode === 'driver' && isAuthResolved && !isGoogleAuthenticated) {
       setIsGoogleAuthModalOpen(true);
@@ -1444,37 +1241,6 @@ export default function App() {
           </>
         )}
 
-        {viewMode === 'driver' && (
-          <DriverRidePresets
-            onSelect={(preset) => {
-              setRidePrice(preset.defaultPrice);
-              saveSessionSettings({
-                ...sessionSettings,
-                autoExpireMinutes: preset.autoExpireMinutes,
-                defaultUnlockedServices: normalizeServiceIds(preset.unlockedServices),
-              });
-            }}
-          />
-        )}
-
-        {viewMode === 'driver' && (
-          <DriverRidePanel
-            activeSession={
-              passengerSessions.find((session) => session.id === activeSessionId) ||
-              passengerSessions.find((session) => session.status === 'active')
-            }
-            ridePrice={ridePrice}
-            isRidePaid={isRidePaid}
-            onStartRide={handleStartRide}
-            onEndRide={handleEndRide}
-            passengerUrl={activePassengerUrl}
-          />
-        )}
-
-        {viewMode === 'driver' && (
-          <DriverHistorySummary sessions={passengerSessions} />
-        )}
-
         {/* Central Passenger Session Management System */}
         <PassengerSessionManager
           viewMode={viewMode}
@@ -1505,7 +1271,7 @@ export default function App() {
           <PixSection
             driver={driver}
             totalAmount={totalAmount}
-            ridePrice={ridePrice}
+            ridePrice={0}
             selectedServicesTotal={selectedServicesTotal}
             selectedTip={selectedTip}
             selectedServicesCount={selectedServiceIds.length}
@@ -1517,7 +1283,6 @@ export default function App() {
             }}
             onPayClick={(amount) => {
               const descParts: string[] = [];
-              if (ridePrice > 0) descParts.push('Corrida');
               if (selectedServicesTotal > 0) descParts.push(`Serviços A Bordo (${selectedServiceIds.length})`);
               if (selectedTip > 0) descParts.push('Caixinha');
               handleOpenMercadoPagoModal(
@@ -1529,16 +1294,19 @@ export default function App() {
         </div>
 
         {/* Wi-Fi Connection & QR Code Section (Rendered right above Spotify) */}
-        <WifiController
-          driver={driver}
-          isUnlocked={effectiveWifiUnlocked}
-          isDriverView={viewMode === 'driver'}
-          onOpenDriverConfig={handleOpenEditModal}
-        />
+        <div id="passenger-resource-wifi">
+          <WifiController
+            driver={driver}
+            isUnlocked={effectiveWifiUnlocked}
+            isDriverView={viewMode === 'driver'}
+            onOpenDriverConfig={handleOpenEditModal}
+          />
+        </div>
 
         {/* Spotify Music Controller Section */}
         {driver.showSpotifyController !== false && (
-          <SpotifyController
+          <div id="passenger-resource-spotify_music">
+            <SpotifyController
             isDriverView={viewMode === 'driver'}
             onOpenDriverConfig={handleOpenEditModal}
             isMusicUnlocked={effectiveMusicUnlocked}
@@ -1549,7 +1317,8 @@ export default function App() {
                 [SERVICE_IDS.MUSIC]
               )
             }
-          />
+            />
+          </div>
         )}
 
         {/* Requirement 2: Additional Services Table / List */}
@@ -1578,7 +1347,7 @@ export default function App() {
             <span>Pagamento direto e seguro via Pix sem taxas intermediárias</span>
           </div>
           <p className="text-[11px] text-slate-400">
-            Página desenvolvida para facilitar pagamentos e serviços adicionais durante a corrida.
+            Página desenvolvida para facilitar pagamentos e serviços disponíveis a bordo.
           </p>
         </footer>
       </main>
@@ -1588,9 +1357,9 @@ export default function App() {
             <div className="w-14 h-14 mx-auto rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mb-4">
               <span className="text-2xl">✓</span>
             </div>
-            <h2 className="text-xl font-black text-slate-900">Obrigado pela viagem!</h2>
+            <h2 className="text-xl font-black text-slate-900">Obrigado!</h2>
             <p className="text-sm text-slate-500 mt-2">
-              Sua sessão foi encerrada. Esperamos ter ajudado a tornar sua viagem melhor.
+              Sua sessão foi encerrada com sucesso.
             </p>
             <button
               data-testid="passenger-thanks-ok"
@@ -1608,7 +1377,7 @@ export default function App() {
 
       {/* Floating total summary bar when passenger selects options */}
       <TotalSummaryBar
-        ridePrice={ridePrice}
+        ridePrice={0}
         selectedServicesCount={selectedServiceIds.length}
         selectedServicesTotal={selectedServicesTotal}
         selectedTip={selectedTip}
@@ -1624,6 +1393,44 @@ export default function App() {
         }}
       />
 
+      {viewMode === 'passenger' && resourceUnlockNotice.length > 0 && (
+        <div
+          data-testid="resource-unlock-modal"
+          className="fixed inset-0 z-[280] bg-slate-950/55 backdrop-blur-sm flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Recurso liberado"
+        >
+          <div className="w-full max-w-sm rounded-3xl bg-white border border-emerald-200 shadow-2xl p-6 text-center">
+            <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto mb-4">
+              <Sparkles className="w-8 h-8" />
+            </div>
+            <h2 className="text-xl font-black text-slate-900">Recurso liberado!</h2>
+            <p className="text-sm text-slate-600 mt-2">
+              {resourceUnlockNotice.length === 1
+                ? (
+                    resourceUnlockNotice[0] === SERVICE_IDS.MUSIC
+                      ? 'Escolha de músicas'
+                      : resourceUnlockNotice[0] === SERVICE_IDS.WIFI
+                        ? 'Wi-Fi'
+                        : resourceUnlockNotice[0] === SERVICE_IDS.CHARGER
+                          ? 'Carregador de celular'
+                          : 'Recurso'
+                  ) + ' foi liberado pelo motorista.'
+                : resourceUnlockNotice.length + ' recursos foram liberados pelo motorista.'}
+            </p>
+            <button
+              data-testid="resource-unlock-modal-ok"
+              type="button"
+              onClick={() => setResourceUnlockNotice([])}
+              className="mt-5 w-full rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Mercado Pago Checkout & Instant Payment Modal */}
       <MercadoPagoModal
         isOpen={isMpModalOpen}
@@ -1631,7 +1438,7 @@ export default function App() {
         totalAmount={mpModalAmount}
         description={mpModalDescription}
         selectedServicesCount={selectedServiceIds.length}
-        rideId={currentRide?.id || rideIdFromUrl}
+        rideId={undefined}
         passengerSessionId={currentPassengerSession?.id || activeSessionId}
         serviceIds={mpModalServiceIds}
         productQuantities={productQuantities}
