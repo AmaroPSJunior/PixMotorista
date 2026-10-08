@@ -190,3 +190,46 @@ test('primeiro acesso do passageiro fica bloqueado até informar o nome', async 
   await expect(page.getByText('Junior')).toBeVisible();
   await expect(page.getByTestId('passenger-exit-button')).toBeVisible();
 });
+
+
+test('motorista libera recurso sem recarregar ou mover a tela', async ({ page }) => {
+  await page.goto('/passageiro');
+
+  await page.route('**/api/driver/passenger-sessions/test-session/resources', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}');
+    expect(body.serviceId).toBe('wifi');
+    expect(body.unlock).toBe(true);
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        session: {
+          id: 'test-session',
+          passengerName: 'Junior',
+          browserId: 'browser-test',
+          createdAt: new Date().toISOString(),
+          lastActiveAt: new Date().toISOString(),
+          status: 'active',
+          unlockedServices: ['wifi'],
+          hasMusicUnlocked: false,
+        },
+      }),
+    });
+  });
+
+  const result = await page.evaluate(async () => {
+    const before = window.scrollY;
+    const response = await fetch('/api/driver/passenger-sessions/test-session/resources', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer e2e' },
+      body: JSON.stringify({ serviceId: 'wifi', unlock: true }),
+    });
+    const payload = await response.json();
+    return { status: response.status, payload, before, after: window.scrollY };
+  });
+
+  expect(result.status).toBe(200);
+  expect(result.payload.session.unlockedServices).toContain('wifi');
+  expect(result.after).toBe(result.before);
+});
