@@ -1027,6 +1027,11 @@ export const SpotifyAppReplica: React.FC<SpotifyAppReplicaProps> = ({
                           <div>
                             <h4 className="font-extrabold text-sm text-white flex items-center gap-2">
                               <span>{dev.name}</span>
+                              {dev.is_default && (
+                                <span className="px-2 py-0.5 bg-sky-500 text-slate-950 font-extrabold text-[10px] rounded-full">
+                                  Padrão
+                                </span>
+                              )}
                               {dev.is_active && (
                                 <span className="px-2 py-0.5 bg-emerald-500 text-black font-extrabold text-[10px] rounded-full">
                                   Ativo
