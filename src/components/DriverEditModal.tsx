@@ -352,7 +352,7 @@ export const DriverEditModal: React.FC<DriverEditModalProps> = ({
   const handleToggleItemType = (id: string) => {
     const updated = servicesForm.map((s) => {
       if (s.id !== id) return s;
-      const currentType = s.itemType || (s.id === 'wifi' || s.id === 'spotify_music' || s.id === 'charger' || s.id === 'extra_stop' ? 'servico' : 'produto');
+      const currentType = s.itemType || (s.id === 'wifi' || s.id === 'spotify_music' || s.id === 'charger' ? 'servico' : 'produto');
       const nextType = currentType === 'servico' ? 'produto' : 'servico';
       return { ...s, itemType: nextType };
     });
@@ -366,7 +366,7 @@ export const DriverEditModal: React.FC<DriverEditModalProps> = ({
     setEditDesc(srv.description);
     setEditPrice(srv.price.toString());
     setEditIcon(srv.iconName || 'Fan');
-    const type = srv.itemType || (srv.id === 'wifi' || srv.id === 'spotify_music' || srv.id === 'charger' || srv.id === 'extra_stop' ? 'servico' : 'produto');
+    const type = srv.itemType || (srv.id === 'wifi' || srv.id === 'spotify_music' || srv.id === 'charger' ? 'servico' : 'produto');
     setEditItemType(type);
   };
 
@@ -1393,12 +1393,12 @@ export const DriverEditModal: React.FC<DriverEditModalProps> = ({
                 {servicesForm
                   .filter((srv) => {
                     if (serviceFilterTab === 'todos') return true;
-                    const type = srv.itemType || (srv.id === 'wifi' || srv.id === 'spotify_music' || srv.id === 'charger' || srv.id === 'extra_stop' ? 'servico' : 'produto');
+                    const type = srv.itemType || (srv.id === 'wifi' || srv.id === 'spotify_music' || srv.id === 'charger' ? 'servico' : 'produto');
                     return type === serviceFilterTab;
                   })
                   .map((srv) => {
                     const isActive = srv.isActive !== false;
-                    const itemType = srv.itemType || (srv.id === 'wifi' || srv.id === 'spotify_music' || srv.id === 'charger' || srv.id === 'extra_stop' ? 'servico' : 'produto');
+                    const itemType = srv.itemType || (srv.id === 'wifi' || srv.id === 'spotify_music' || srv.id === 'charger' ? 'servico' : 'produto');
                     const isService = itemType === 'servico';
                     const isEditingThis = editingServiceId === srv.id;
 
