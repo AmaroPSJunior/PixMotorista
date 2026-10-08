@@ -32,3 +32,12 @@ export function isCanonicalUnlockableService(value: string): boolean {
   const id = normalizeServiceId(value);
   return id === SERVICE_IDS.WIFI || id === SERVICE_IDS.MUSIC || id === SERVICE_IDS.CHARGER;
 }
+
+
+export function getNewlyUnlockedServiceIds(
+  previous: string[] = [],
+  current: string[] = []
+): string[] {
+  const previousSet = new Set(normalizeServiceIds(previous));
+  return normalizeServiceIds(current).filter((id) => !previousSet.has(id));
+}
