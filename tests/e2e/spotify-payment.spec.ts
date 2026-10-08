@@ -310,3 +310,128 @@ test('liberação remota do motorista chega ao passageiro sem reload e toca som'
     { timeout: 8000 }
   ).toBeGreaterThan(0);
 });
+
+
+test('dois dispositivos: motorista libera Spotify e passageiro recebe em tempo real com som', async ({ browser }) => {
+  const context = await browser.newContext();
+  let unlocked = false;
+
+  await context.route('**/api/spotify/status', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ configured: true, hasToken: false, isIntegrated: false, userProfile: null }),
+    });
+  });
+
+  await context.route('**/api/passenger/session/start', async (route) => {
+    const payload = JSON.parse(route.request().postData() || '{}');
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        waitingForRide: true,
+        session: {
+          id: 'sess_two_devices',
+          passengerName: payload.passengerName || 'Junior',
+          browserId: payload.browserId || 'browser-two-devices',
+          createdAt: new Date().toISOString(),
+          lastActiveAt: new Date().toISOString(),
+          status: 'active',
+          unlockedServices: [],
+          hasMusicUnlocked: false,
+          authUid: 'e2e-anonymous-passenger',
+          resourceRevision: 0,
+        },
+      }),
+    });
+  });
+
+  await context.route('**/api/passenger/session/current?**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        session: {
+          id: 'sess_two_devices',
+          passengerName: 'Junior',
+          browserId: 'browser-two-devices',
+          createdAt: new Date().toISOString(),
+          lastActiveAt: new Date().toISOString(),
+          status: 'active',
+          unlockedServices: unlocked ? ['spotify_music'] : [],
+          hasMusicUnlocked: unlocked,
+          authUid: 'e2e-anonymous-passenger',
+          resourceRevision: unlocked ? 2 : 0,
+          lastResourceChangeAt: unlocked ? new Date().toISOString() : undefined,
+        },
+      }),
+    });
+  });
+
+  await context.route('**/api/driver/passenger-sessions/sess_two_devices/resources', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}');
+    expect(body.serviceId).toBe('spotify_music');
+    expect(body.unlock).toBe(true);
+    unlocked = true;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        propagatedSessionIds: ['sess_two_devices'],
+        session: {
+          id: 'sess_two_devices',
+          passengerName: 'Junior',
+          status: 'active',
+          unlockedServices: ['spotify_music'],
+          hasMusicUnlocked: true,
+          resourceRevision: 2,
+        },
+      }),
+    });
+  });
+
+  const passengerPage = await context.newPage();
+  await passengerPage.addInitScript(() => {
+    (window as any).__unlockSoundCount = 0;
+    window.addEventListener('pix:success-sound', () => {
+      (window as any).__unlockSoundCount += 1;
+    });
+  });
+
+  await passengerPage.goto('/passageiro?__e2ePassengerFresh=1');
+  await passengerPage.getByTestId('passenger-name-input').fill('Junior');
+  await passengerPage.getByRole('button', { name: 'Entrar' }).click();
+
+  await expect(passengerPage.getByTestId('spotify-passenger-available')).toBeVisible();
+
+  const driverPage = await context.newPage();
+  await driverPage.goto('/passageiro');
+  const driverResponse = await driverPage.evaluate(async () => {
+    const response = await fetch('/api/driver/passenger-sessions/sess_two_devices/resources', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer driver-e2e',
+      },
+      body: JSON.stringify({ serviceId: 'spotify_music', unlock: true }),
+    });
+    return { status: response.status, payload: await response.json() };
+  });
+
+  expect(driverResponse.status).toBe(200);
+  expect(driverResponse.payload.session.unlockedServices).toContain('spotify_music');
+
+  await expect(passengerPage.getByTestId('spotify-controller-unlocked')).toBeVisible({ timeout: 7000 });
+  await expect(passengerPage.getByText('Músicas Liberadas!')).toBeVisible();
+
+  await expect.poll(
+    async () => passengerPage.evaluate(() => (window as any).__unlockSoundCount || 0),
+    { timeout: 7000 }
+  ).toBeGreaterThan(0);
+
+  await context.close();
+});
