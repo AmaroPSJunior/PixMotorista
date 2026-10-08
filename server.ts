@@ -386,6 +386,74 @@ app.post('/api/passenger/session/start', async (req, res) => {
   }
 });
 
+app.post('/api/passenger/session/heartbeat', async (req, res) => {
+  try {
+    if (!db || !adminAuth) {
+      return res.status(503).json({ error: 'Serviço de sessão indisponível.' });
+    }
+
+    const authHeader = req.get('authorization') || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!token) return res.status(401).json({ error: 'Autenticação do passageiro ausente.' });
+
+    const decoded = await adminAuth.verifyIdToken(token);
+    if (decoded.firebase?.sign_in_provider !== 'anonymous') {
+      return res.status(403).json({ error: 'Acesso restrito ao passageiro anônimo.' });
+    }
+
+    const sessionId = String(req.body?.sessionId || '').trim();
+    if (!sessionId) return res.status(400).json({ error: 'sessionId obrigatório.' });
+
+    const ref = db.collection('passenger_sessions').doc(sessionId);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ error: 'Sessão não encontrada.' });
+
+    const data = snap.data() || {};
+    if (data.authUid !== decoded.uid) {
+      return res.status(403).json({ error: 'Esta sessão pertence a outro passageiro.' });
+    }
+
+    if (data.status !== 'active') {
+      return res.status(410).json({ error: 'Sessão encerrada ou expirada.' });
+    }
+
+    const settingsSnap = await db.collection('session_settings').doc('main_config').get();
+    const settingsData = settingsSnap.exists ? (settingsSnap.data() || {}) : {};
+    const expireMinutes = Math.max(1, Number(settingsData.autoExpireMinutes) || 30);
+    const timeoutMs = expireMinutes * 60 * 1000;
+    const lastActiveAt = String(data.lastActiveAt || data.createdAt || '');
+    const lastActiveMs = new Date(lastActiveAt).getTime();
+    const now = new Date();
+
+    if (Number.isFinite(lastActiveMs) && now.getTime() - lastActiveMs > timeoutMs) {
+      const expiredPayload = {
+        status: 'expired',
+        expiredAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      };
+      await ref.set(expiredPayload, { merge: true });
+      return res.status(410).json({
+        error: 'Sessão expirada por inatividade.',
+        session: { id: sessionId, ...data, ...expiredPayload },
+      });
+    }
+
+    const payload = {
+      lastActiveAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    };
+    await ref.set(payload, { merge: true });
+
+    return res.json({
+      success: true,
+      session: { id: sessionId, ...data, ...payload },
+    });
+  } catch (error) {
+    console.error('Erro no heartbeat do passageiro:', error);
+    return res.status(500).json({ error: 'Não foi possível atualizar a atividade da sessão.' });
+  }
+});
+
 app.post('/api/passenger/session/close', async (req, res) => {
   try {
     if (!db || !adminAuth) {
