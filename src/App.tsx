@@ -238,7 +238,10 @@ export default function App() {
       setServices(servicesList);
     });
 
-    const unsubSessions = subscribePassengerSessions(
+    const unsubSessions =
+      viewMode === 'passenger' && !passengerAuthUid
+        ? () => {}
+        : subscribePassengerSessions(
       (sessionsList) => {
         setPassengerSessions((previous) => {
           if (viewMode !== 'passenger') return sessionsList;
