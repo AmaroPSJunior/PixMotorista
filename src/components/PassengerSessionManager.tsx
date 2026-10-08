@@ -44,6 +44,7 @@ interface PassengerSessionManagerProps {
   driverEmail?: string;
   requirePassengerIdentification?: boolean;
   onIdentifyPassenger?: (name: string) => Promise<void>;
+  onSessionUpdated?: (session: PassengerSession) => void;
 }
 
 export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = ({
@@ -57,6 +58,7 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
   driverEmail,
   requirePassengerIdentification = false,
   onIdentifyPassenger,
+  onSessionUpdated,
 }) => {
   const browserId = getOrCreateBrowserId();
   const [passengerNameInput, setPassengerNameInput] = useState('');
@@ -263,13 +265,39 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
     const canonicalId = normalizeServiceId(resourceKey);
     const unlocked = normalizeServiceIds(session.unlockedServices);
     const nextUnlockState = !unlocked.includes(canonicalId);
+    const scrollY = typeof window !== 'undefined' ? window.scrollY : 0;
 
-    await toggleSessionServiceUnlock(
-      session.id,
-      canonicalId,
-      unlocked,
-      nextUnlockState
-    );
+    try {
+      const token = await getCurrentIdToken();
+      const response = await fetch(
+        '/api/driver/passenger-sessions/' + encodeURIComponent(session.id) + '/resources',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + token,
+          },
+          body: JSON.stringify({
+            serviceId: canonicalId,
+            unlock: nextUnlockState,
+          }),
+        }
+      );
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.session) {
+        throw new Error(payload?.error || 'Não foi possível atualizar o recurso.');
+      }
+
+      onSessionUpdated?.(payload.session as PassengerSession);
+    } catch (error: any) {
+      console.error('Falha ao atualizar recurso do passageiro:', error);
+      alert(error?.message || 'Não foi possível atualizar o recurso.');
+    } finally {
+      if (typeof window !== 'undefined') {
+        requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: 'auto' }));
+      }
+    }
   };
 
   const handleUnlockAllResources = async (session: PassengerSession) => {
@@ -287,11 +315,39 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
       })
       .map((srv) => normalizeServiceId(srv.id));
 
-    let nextUnlocked = normalizeServiceIds(session.unlockedServices);
-    for (const serviceId of serviceIds) {
-      if (!nextUnlocked.includes(serviceId)) {
-        await toggleSessionServiceUnlock(session.id, serviceId, nextUnlocked, true);
-        nextUnlocked = [...nextUnlocked, serviceId];
+    if (serviceIds.length === 0) return;
+
+    const scrollY = typeof window !== 'undefined' ? window.scrollY : 0;
+
+    try {
+      const token = await getCurrentIdToken();
+      const response = await fetch(
+        '/api/driver/passenger-sessions/' + encodeURIComponent(session.id) + '/resources',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + token,
+          },
+          body: JSON.stringify({
+            serviceIds,
+            unlock: true,
+          }),
+        }
+      );
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.session) {
+        throw new Error(payload?.error || 'Não foi possível liberar os recursos.');
+      }
+
+      onSessionUpdated?.(payload.session as PassengerSession);
+    } catch (error: any) {
+      console.error('Falha ao liberar todos os recursos:', error);
+      alert(error?.message || 'Não foi possível liberar os recursos.');
+    } finally {
+      if (typeof window !== 'undefined') {
+        requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: 'auto' }));
       }
     }
   };
@@ -767,7 +823,8 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
 
                                 <button
                                   type="button"
-                                  onClick={() => handleUnlockAllResources(session)}
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={(e) => { e.preventDefault(); e.currentTarget.blur(); handleUnlockAllResources(session); }}
                                   className="min-h-12 px-4 rounded-2xl bg-emerald-500 text-slate-950 text-xs font-black flex items-center gap-2 shadow-lg shadow-emerald-500/20 active:scale-[0.98]"
                                   title="Liberar todos os recursos deste passageiro"
                                 >
@@ -816,7 +873,8 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
                                       <button
                                         key={srv.id}
                                         type="button"
-                                        onClick={() => handleToggleResource(session, srv.id)}
+                                        onMouseDown={(e) => e.preventDefault()}
+                                        onClick={(e) => { e.preventDefault(); e.currentTarget.blur(); handleToggleResource(session, srv.id); }}
                                         aria-pressed={isUnlocked}
                                         className={`min-h-[72px] rounded-2xl border px-3 py-3 text-left transition-all active:scale-[0.98] ${
                                           isUnlocked
