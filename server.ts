@@ -150,6 +150,68 @@ const getDoc = async (ref: any) => {
   };
 };
 
+app.get('/api/driver/passenger-sessions', async (req, res) => {
+  try {
+    if (!db || !adminAuth) {
+      return res.status(503).json({ error: 'Serviço de sessão indisponível.' });
+    }
+
+    const authHeader = req.get('authorization') || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!token) return res.status(401).json({ error: 'Autenticação do motorista ausente.' });
+
+    const decoded = await adminAuth.verifyIdToken(token);
+    const provider = decoded.firebase?.sign_in_provider;
+    if (provider === 'anonymous') {
+      return res.status(403).json({ error: 'Acesso restrito ao motorista autenticado.' });
+    }
+
+    const snapshot = await db.collection('passenger_sessions').get();
+    const sessions: any[] = [];
+
+    snapshot.forEach((docSnap: any) => {
+      const data = docSnap.data() || {};
+      sessions.push({
+        id: docSnap.id,
+        passengerName: data.passengerName || 'Passageiro',
+        browserId: data.browserId || '',
+        createdAt: data.createdAt || new Date().toISOString(),
+        lastActiveAt: data.lastActiveAt || data.createdAt || new Date().toISOString(),
+        status: data.status || 'active',
+        unlockedServices: Array.isArray(data.unlockedServices) ? data.unlockedServices : [],
+        purchasedProducts:
+          data.purchasedProducts && typeof data.purchasedProducts === 'object'
+            ? data.purchasedProducts
+            : {},
+        hasMusicUnlocked: Boolean(data.hasMusicUnlocked),
+        paidAmount: Number(data.paidAmount) || 0,
+        paymentId: data.paymentId || '',
+        notes: data.notes || '',
+        isRidePaid: Boolean(data.isRidePaid),
+        paidRideAmount: Number(data.paidRideAmount) || 0,
+        ridePrice: data.ridePrice !== undefined ? Number(data.ridePrice) : 0,
+        driverEmail: data.driverEmail || '',
+        driverUid: data.driverUid || '',
+        rideId: data.rideId || '',
+        authUid: data.authUid || '',
+        closedAt: data.closedAt || undefined,
+        reactivationExpiresAt: data.reactivationExpiresAt || undefined,
+      });
+    });
+
+    sessions.sort(
+      (a, b) =>
+        new Date(b.lastActiveAt || b.createdAt).getTime() -
+        new Date(a.lastActiveAt || a.createdAt).getTime()
+    );
+
+    return res.json({ success: true, sessions });
+  } catch (error) {
+    console.error('Erro ao listar sessões para motorista:', error);
+    return res.status(401).json({ error: 'Não foi possível validar o motorista.' });
+  }
+});
+
 app.post('/api/passenger/session/start', async (req, res) => {
   try {
     if (!db || !adminAuth) {
