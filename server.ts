@@ -150,6 +150,103 @@ const getDoc = async (ref: any) => {
   };
 };
 
+app.post('/api/passenger/session/start', async (req, res) => {
+  try {
+    if (!db || !adminAuth) {
+      return res.status(503).json({ error: 'Serviço de sessão indisponível.' });
+    }
+
+    const authHeader = req.get('authorization') || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!token) return res.status(401).json({ error: 'Autenticação do passageiro ausente.' });
+
+    const decoded = await adminAuth.verifyIdToken(token);
+    const provider = decoded.firebase?.sign_in_provider;
+    if (provider !== 'anonymous') {
+      return res.status(403).json({ error: 'Somente a sessão anônima do passageiro pode usar esta rota.' });
+    }
+
+    const passengerName = String(req.body?.passengerName || '').trim();
+    if (!passengerName || passengerName.toLowerCase() === 'passageiro') {
+      return res.status(400).json({ error: 'Informe um nome válido para iniciar a sessão.' });
+    }
+
+    const browserId = String(req.body?.browserId || '').trim();
+    const requestedRideId = String(req.body?.rideId || '').trim();
+    const nowIso = new Date().toISOString();
+
+    const existingSnapshot = await db
+      .collection('passenger_sessions')
+      .where('authUid', '==', decoded.uid)
+      .get();
+
+    let activeDoc: any = null;
+    existingSnapshot.forEach((docSnap: any) => {
+      const data = docSnap.data() || {};
+      if (!activeDoc && data.status === 'active') activeDoc = docSnap;
+    });
+
+    let ride: any = null;
+    if (requestedRideId) {
+      const rideSnap = await db.collection('rides').doc(requestedRideId).get();
+      if (rideSnap.exists && rideSnap.data()?.status === 'active') {
+        ride = { id: rideSnap.id, ...(rideSnap.data() || {}) };
+      }
+    }
+
+    let publicDriver: any = null;
+    if (!ride) {
+      const driverSnap = await db.collection('driver_profiles').doc('main_profile').get();
+      if (driverSnap.exists) publicDriver = driverSnap.data() || null;
+    }
+
+    const sessionRef = activeDoc
+      ? activeDoc.ref
+      : db.collection('passenger_sessions').doc(
+          'sess_waiting_' + decoded.uid + '_' + Date.now()
+        );
+
+    const existingData = activeDoc ? (activeDoc.data() || {}) : {};
+    const unlockedServices = ride && Array.isArray(ride.defaultUnlockedServices)
+      ? ride.defaultUnlockedServices
+      : Array.isArray(existingData.unlockedServices)
+        ? existingData.unlockedServices
+        : [];
+
+    const session = {
+      id: sessionRef.id,
+      passengerName,
+      browserId: browserId || existingData.browserId || '',
+      createdAt: existingData.createdAt || nowIso,
+      lastActiveAt: nowIso,
+      status: 'active',
+      unlockedServices,
+      hasMusicUnlocked: unlockedServices.includes('spotify_music'),
+      ridePrice: ride ? Number(ride.price) || 0 : Number(existingData.ridePrice) || 0,
+      rideId: ride ? ride.id : existingData.rideId || '',
+      driverUid: ride
+        ? String(ride.driverUid || '')
+        : String(publicDriver?.authUid || existingData.driverUid || ''),
+      driverEmail: ride
+        ? String(ride.driverEmail || '')
+        : String(publicDriver?.googleEmail || existingData.driverEmail || ''),
+      authUid: decoded.uid,
+      updatedAt: nowIso,
+    };
+
+    await sessionRef.set(session, { merge: true });
+
+    return res.json({
+      success: true,
+      session,
+      waitingForRide: !ride,
+    });
+  } catch (error) {
+    console.error('Erro ao iniciar sessão do passageiro:', error);
+    return res.status(401).json({ error: 'Não foi possível iniciar a sessão do passageiro.' });
+  }
+});
+
 app.post('/api/passenger/session/close', async (req, res) => {
   try {
     if (!db || !adminAuth) {
