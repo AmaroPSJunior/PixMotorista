@@ -267,10 +267,13 @@ app.post('/api/driver/passenger-sessions/:sessionId/resources', async (req, res)
       updated = updated.filter((id) => !remove.has(id));
     }
 
+    const nowIso = new Date().toISOString();
     const payload = {
       unlockedServices: updated,
       hasMusicUnlocked: updated.includes('spotify_music'),
-      updatedAt: new Date().toISOString(),
+      lastResourceChangeAt: nowIso,
+      resourceRevision: Date.now(),
+      updatedAt: nowIso,
     };
 
     await ref.set(payload, { merge: true });
@@ -383,6 +386,74 @@ app.post('/api/passenger/session/start', async (req, res) => {
   } catch (error) {
     console.error('Erro ao iniciar sessão do passageiro:', error);
     return res.status(401).json({ error: 'Não foi possível iniciar a sessão do passageiro.' });
+  }
+});
+
+app.get('/api/passenger/session/current', async (req, res) => {
+  try {
+    if (!db || !adminAuth) {
+      return res.status(503).json({ error: 'Serviço de sessão indisponível.' });
+    }
+
+    const authHeader = req.get('authorization') || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!token) return res.status(401).json({ error: 'Autenticação do passageiro ausente.' });
+
+    const decoded = await adminAuth.verifyIdToken(token);
+    if (decoded.firebase?.sign_in_provider !== 'anonymous') {
+      return res.status(403).json({ error: 'Acesso restrito ao passageiro anônimo.' });
+    }
+
+    const requestedSessionId = String(req.query.sessionId || '').trim();
+    let selectedDoc: any = null;
+
+    if (requestedSessionId) {
+      const requested = await db.collection('passenger_sessions').doc(requestedSessionId).get();
+      if (requested.exists && requested.data()?.authUid === decoded.uid) {
+        selectedDoc = requested;
+      }
+    }
+
+    if (!selectedDoc) {
+      const owned = await db
+        .collection('passenger_sessions')
+        .where('authUid', '==', decoded.uid)
+        .get();
+
+      let bestTime = -1;
+      owned.forEach((docSnap: any) => {
+        const data = docSnap.data() || {};
+        if (data.status !== 'active') return;
+        const time = new Date(data.lastActiveAt || data.createdAt || 0).getTime();
+        if (!selectedDoc || time > bestTime) {
+          selectedDoc = docSnap;
+          bestTime = Number.isFinite(time) ? time : 0;
+        }
+      });
+    }
+
+    if (!selectedDoc) {
+      return res.status(404).json({ error: 'Sessão ativa não encontrada.' });
+    }
+
+    const data = selectedDoc.data() || {};
+    const unlockedServices = normalizeServiceIds(
+      Array.isArray(data.unlockedServices) ? data.unlockedServices : []
+    );
+
+    return res.json({
+      success: true,
+      session: {
+        id: selectedDoc.id,
+        ...data,
+        unlockedServices,
+        hasMusicUnlocked:
+          Boolean(data.hasMusicUnlocked) || unlockedServices.includes('spotify_music'),
+      },
+    });
+  } catch (error) {
+    console.error('Erro ao recuperar sessão atual do passageiro:', error);
+    return res.status(500).json({ error: 'Não foi possível recuperar a sessão do passageiro.' });
   }
 });
 
