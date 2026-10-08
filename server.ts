@@ -11,6 +11,7 @@ import { MercadoPagoConfig, Payment } from 'mercadopago';
 import QRCode from 'qrcode';
 import { buildPassengerClosedState } from './src/domain/businessRules';
 import { normalizeServiceId, normalizeServiceIds } from './src/domain/serviceIds';
+import { isPreferredBioIdVehicleDevice, pickDefaultSpotifyDevice } from './src/domain/spotifyDevice';
 import firebaseClientConfig from './firebase-applet-config.json';
 
 dotenv.config();
@@ -1199,10 +1200,7 @@ app.post('/api/spotify/play', async (req, res) => {
     const devices = devicesData?.devices || [];
     if (devices.length > 0) {
       // Find active device or pick a device (preferring car/bluetooth or first available)
-      const targetDev =
-        devices.find((d: any) => d.is_active) ||
-        devices.find((d: any) => /car|som|veiculo|bluetooth|automotive/i.test(d.name)) ||
-        devices[0];
+      const targetDev = pickDefaultSpotifyDevice(devices);
 
       if (targetDev) {
         // Transfer playback to that device and resume
@@ -1327,8 +1325,19 @@ app.get('/api/spotify/devices', async (req, res) => {
 
     if (response.ok) {
       const data = await response.json();
+      const devices = Array.isArray(data.devices) ? data.devices : [];
+      const sortedDevices = [...devices].sort((a: any, b: any) => {
+        const aPreferred = isPreferredBioIdVehicleDevice(a?.name || '') ? 1 : 0;
+        const bPreferred = isPreferredBioIdVehicleDevice(b?.name || '') ? 1 : 0;
+        if (aPreferred !== bPreferred) return bPreferred - aPreferred;
+        return Number(Boolean(b?.is_active)) - Number(Boolean(a?.is_active));
+      });
+
       return res.json({
-        devices: data.devices || [],
+        devices: sortedDevices.map((device: any) => ({
+          ...device,
+          is_default: isPreferredBioIdVehicleDevice(device?.name || ''),
+        })),
         authenticated: true,
         userProfile: spotifySession.userProfile || null,
       });
