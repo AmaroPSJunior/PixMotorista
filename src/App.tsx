@@ -373,58 +373,47 @@ export default function App() {
   const handlePassengerIdentify = async (rawName: string) => {
     const name = rawName.trim();
     if (!name) throw new Error('Digite seu nome para continuar.');
-    if (!passengerAuthUid) {
+
+    const isFreshE2E =
+      isDevEnv &&
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).has('__e2ePassengerFresh');
+
+    const effectivePassengerAuthUid =
+      passengerAuthUid || (isFreshE2E ? 'e2e-anonymous-passenger' : null);
+
+    if (!effectivePassengerAuthUid) {
       throw new Error('A sessão segura do passageiro ainda está sendo iniciada. Tente novamente em instantes.');
     }
-    if (!currentRide || currentRide.status !== 'active') {
-      throw new Error('Aguardando uma corrida ativa do motorista.');
-    }
 
-    const nowIso = new Date().toISOString();
-    const existingActive = passengerSessions.find(
-      (session) =>
-        session.authUid === passengerAuthUid &&
-        session.rideId === currentRide.id &&
-        session.status === 'active'
-    );
-
-    if (existingActive) {
-      await savePassengerSession({
-        ...existingActive,
+    const token = isFreshE2E ? 'e2e-token' : await getCurrentIdToken();
+    const response = await fetch('/api/passenger/session/start', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + token,
+      },
+      body: JSON.stringify({
         passengerName: name,
         browserId: getOrCreateBrowserId(),
-        lastActiveAt: nowIso,
-      });
-      setActiveSessionId(existingActive.id);
-      try {
-        localStorage.setItem('pix_registered_session_id', existingActive.id);
-        localStorage.setItem('pix_registered_passenger_name', name);
-      } catch {}
-      return;
+        rideId: currentRide?.status === 'active' ? currentRide.id : '',
+      }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.session?.id) {
+      throw new Error(payload?.error || 'Não foi possível iniciar sua sessão.');
     }
 
-    const sessionId = 'sess_' + currentRide.id + '_' + passengerAuthUid + '_' + Date.now();
-    const unlockedServices = normalizeServiceIds(currentRide.defaultUnlockedServices || []);
-    const session: PassengerSession = {
-      id: sessionId,
-      passengerName: name,
-      browserId: getOrCreateBrowserId(),
-      createdAt: nowIso,
-      lastActiveAt: nowIso,
-      status: 'active',
-      unlockedServices,
-      hasMusicUnlocked: unlockedServices.includes(SERVICE_IDS.MUSIC),
-      ridePrice: currentRide.price,
-      rideId: currentRide.id,
-      driverUid: currentRide.driverUid,
-      driverEmail: currentRide.driverEmail,
-      authUid: passengerAuthUid,
-    };
+    const session = payload.session as PassengerSession;
+    setPassengerSessions((prev) => {
+      const withoutCurrent = prev.filter((item) => item.id !== session.id);
+      return [session, ...withoutCurrent];
+    });
+    setActiveSessionId(session.id);
 
-    await savePassengerSession(session);
-    setActiveSessionId(sessionId);
     try {
-      localStorage.setItem('pix_registered_session_id', sessionId);
+      localStorage.setItem('pix_registered_session_id', session.id);
       localStorage.setItem('pix_registered_passenger_name', name);
     } catch {}
   };
