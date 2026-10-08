@@ -17,7 +17,6 @@ import {
   Wifi,
   PlusCircle,
   Sparkles,
-  Car,
 } from 'lucide-react';
 import { PassengerSession, SessionSettings, AdditionalService } from '../types';
 import { DEFAULT_SERVICES } from '../data/defaultData';
@@ -307,8 +306,7 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
           srv.itemType ||
           (srv.id === 'wifi' ||
           srv.id === 'spotify_music' ||
-          srv.id === 'charger' ||
-          srv.id === 'extra_stop'
+          srv.id === 'charger'
             ? 'servico'
             : 'produto');
         return type === 'servico';
@@ -716,11 +714,6 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
                                       <Zap className="w-3 h-3 text-amber-400" /> Carregador Ativo
                                     </span>
                                   )}
-                                  {session.isRidePaid && (
-                                    <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-bold border border-emerald-500/30">
-                                      <Car className="w-3 h-3 text-emerald-400" /> Corrida Paga
-                                    </span>
-                                  )}
                                   {isExpired && (
                                     <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-bold border border-amber-500/30">
                                       ⏳ Expirado
@@ -774,41 +767,6 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
 
                           {/* Rule 4: Resource & Access Control Toggles Categorized */}
                           <div className="pt-2 border-t border-slate-800/80 space-y-2.5 text-xs">
-                            {/* Ride Status Toggle */}
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span className="text-slate-400 font-extrabold text-[11px] flex items-center gap-1">
-                                <Car className="w-3.5 h-3.5 text-emerald-400" /> Pagamento da Corrida (Trajeto):
-                              </span>
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  savePassengerSession({
-                                    ...session,
-                                    isRidePaid: !session.isRidePaid,
-                                  });
-                                }}
-                                className={`px-3 py-1.5 rounded-xl font-extrabold text-[11px] flex items-center gap-1.5 border transition-all cursor-pointer ${
-                                  session.isRidePaid
-                                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-xs hover:bg-emerald-500/30'
-                                    : 'bg-slate-900/90 text-slate-400 border-slate-700 hover:text-slate-200 hover:border-slate-600'
-                                }`}
-                                title={session.isRidePaid ? 'Marcar Corrida como Pendente' : 'Marcar Corrida como Paga'}
-                              >
-                                <Car className="w-3.5 h-3.5 text-emerald-400" />
-                                <span>Status Corrida:</span>
-                                {session.isRidePaid ? (
-                                  <span className="text-emerald-400 font-black flex items-center gap-0.5">
-                                    PAGA <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                                  </span>
-                                ) : (
-                                  <span className="text-slate-500 font-bold flex items-center gap-0.5">
-                                    PENDENTE <Lock className="w-3 h-3 text-slate-500" />
-                                  </span>
-                                )}
-                              </button>
-                            </div>
-
                             {/* Categoria SERVIÇOS DO VEÍCULO */}
                             <div className="bg-slate-900/80 p-3 rounded-2xl border border-slate-800 space-y-3">
                               <div className="flex items-center justify-between gap-3">
@@ -840,8 +798,7 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
                                       srv.itemType ||
                                       (srv.id === 'wifi' ||
                                       srv.id === 'spotify_music' ||
-                                      srv.id === 'charger' ||
-                                      srv.id === 'extra_stop'
+                                      srv.id === 'charger'
                                         ? 'servico'
                                         : 'produto');
                                     return type === 'servico';
@@ -926,7 +883,7 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
                               </div>
                             </div>
                             {/* Categoria PRODUTOS A BORDO */}
-                            {unifiedServicesList.some((srv) => (srv.itemType || (srv.id === 'wifi' || srv.id === 'spotify_music' || srv.id === 'charger' || srv.id === 'extra_stop' ? 'servico' : 'produto')) === 'produto') && (
+                            {unifiedServicesList.some((srv) => (srv.itemType || (srv.id === 'wifi' || srv.id === 'spotify_music' || srv.id === 'charger' ? 'servico' : 'produto')) === 'produto') && (
                               <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
                                 <span className="text-amber-300 font-extrabold text-[11px] flex items-center gap-1">
                                   📦 Produtos Comprados a Bordo:
@@ -935,7 +892,7 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
                                 <div className="flex flex-wrap items-center gap-1.5">
                                   {unifiedServicesList
                                     .filter((srv) => {
-                                      const type = srv.itemType || (srv.id === 'wifi' || srv.id === 'spotify_music' || srv.id === 'charger' || srv.id === 'extra_stop' ? 'servico' : 'produto');
+                                      const type = srv.itemType || (srv.id === 'wifi' || srv.id === 'spotify_music' || srv.id === 'charger' ? 'servico' : 'produto');
                                       return type === 'produto';
                                     })
                                     .map((srv) => {
