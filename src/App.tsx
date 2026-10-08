@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
 import { PixSection } from './components/PixSection';
 import { ServicesList } from './components/ServicesList';
@@ -15,7 +15,7 @@ import { LogoutConfirmModal } from './components/LogoutConfirmModal';
 import { DEFAULT_DRIVER_PROFILE, DEFAULT_SERVICES } from './data/defaultData';
 import { DriverProfile, AdditionalService, MercadoPagoPayment, PassengerSession, SessionSettings, Ride, getItemType } from './types';
 import { HelpCircle, ShieldCheck, Eye, Smartphone, ArrowRight, Sparkles, LogOut, Database, Users } from 'lucide-react';
-import { playPaymentSuccessSound } from './utils/audio';
+import { armPaymentSuccessSound, playPaymentSuccessSound } from './utils/audio';
 import { PassengerSessionManager } from './components/PassengerSessionManager';
 import { getOrCreateBrowserId } from './utils/browserId';
 import {
@@ -46,7 +46,7 @@ import { DriverRidePanel } from './components/DriverRidePanel';
 import { DriverHistorySummary } from './components/DriverHistorySummary';
 import { DriverRidePresets } from './components/DriverRidePresets';
 import { useRideSession } from './state/useRideSession';
-import { normalizeServiceId, normalizeServiceIds, SERVICE_IDS } from './domain/serviceIds';
+import { getNewlyUnlockedServiceIds, normalizeServiceId, normalizeServiceIds, SERVICE_IDS } from './domain/serviceIds';
 import { isPassengerCloseTerminalStatus } from './domain/businessRules';
 
 export default function App() {
@@ -108,6 +108,9 @@ export default function App() {
     return localStorage.getItem('pix_music_unlocked') === 'true';
   });
 
+  const previousRemoteUnlocksRef = useRef<{ sessionId: string; ids: string[] } | null>(null);
+  const lastUnlockSoundAtRef = useRef<number>(0);
+
   // Firebase Auth is authoritative. localStorage is never used as proof of identity.
   const [isGoogleAuthenticated, setIsGoogleAuthenticated] = useState<boolean>(false);
   const [isAuthResolved, setIsAuthResolved] = useState<boolean>(false);
@@ -125,6 +128,24 @@ export default function App() {
   const driverEmailFromUrl = getDriverEmailFromUrl();
 
   const [viewMode, setViewMode] = useState<'driver' | 'passenger'>(() => getExperienceFromUrl());
+
+  useEffect(() => {
+    if (viewMode !== 'passenger') return;
+
+    const arm = () => {
+      void armPaymentSuccessSound();
+    };
+
+    window.addEventListener('pointerdown', arm, { once: true, passive: true });
+    window.addEventListener('touchstart', arm, { once: true, passive: true });
+    window.addEventListener('keydown', arm, { once: true });
+
+    return () => {
+      window.removeEventListener('pointerdown', arm);
+      window.removeEventListener('touchstart', arm);
+      window.removeEventListener('keydown', arm);
+    };
+  }, [viewMode]);
 
   useEffect(() => {
     const syncRoute = () => setViewMode(getExperienceFromUrl());
@@ -413,7 +434,16 @@ export default function App() {
 
   const passengerOwnedSessions = passengerSessions.filter(
     (session) =>
-      (!passengerAuthUid || session.authUid === passengerAuthUid) &&
+      (
+        !passengerAuthUid ||
+        session.authUid === passengerAuthUid ||
+        (
+          isDevEnv &&
+          typeof window !== 'undefined' &&
+          new URLSearchParams(window.location.search).has('__e2ePassengerFresh') &&
+          session.authUid === 'e2e-anonymous-passenger'
+        )
+      ) &&
       isCurrentPassengerSessionValid(session)
   );
 
@@ -452,6 +482,7 @@ export default function App() {
   const displayPassengerName = currentPassengerSession?.passengerName || rawPassengerName || 'Passageiro';
 
   const handlePassengerIdentify = async (rawName: string) => {
+    void armPaymentSuccessSound();
     const name = rawName.trim();
     if (!name) throw new Error('Digite seu nome para continuar.');
 
@@ -677,6 +708,113 @@ export default function App() {
     window.location.replace(window.location.href);
   };
 
+
+  // Firestore onSnapshot is the primary real-time channel. This authenticated
+  // Firestore-backed endpoint is a polling fallback for mobile browsers whose
+  // real-time listener/cache can stall after backgrounding.
+  useEffect(() => {
+    if (
+      viewMode !== 'passenger' ||
+      !currentPassengerSession ||
+      !passengerHasNamedActiveSession
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    const isFreshE2E =
+      isDevEnv &&
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).has('__e2ePassengerFresh');
+
+    const syncCurrentPassengerSession = async () => {
+      try {
+        const token = isFreshE2E ? 'e2e-token' : await getCurrentIdToken();
+        const response = await fetch(
+          '/api/passenger/session/current?sessionId=' +
+            encodeURIComponent(currentPassengerSession.id),
+          {
+            headers: { Authorization: 'Bearer ' + token },
+            cache: 'no-store',
+          }
+        );
+
+        if (!response.ok) return;
+        const payload = await response.json().catch(() => ({}));
+        if (cancelled || !payload?.session?.id) return;
+
+        const syncedSession = payload.session as PassengerSession;
+        setPassengerSessions((prev) => {
+          const exists = prev.some((session) => session.id === syncedSession.id);
+          if (!exists) return [syncedSession, ...prev];
+          return prev.map((session) =>
+            session.id === syncedSession.id ? syncedSession : session
+          );
+        });
+      } catch (error) {
+        console.warn('Falha no fallback de sincronização do passageiro:', error);
+      }
+    };
+
+    void syncCurrentPassengerSession();
+    const interval = window.setInterval(syncCurrentPassengerSession, 2000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [
+    viewMode,
+    currentPassengerSession?.id,
+    passengerHasNamedActiveSession,
+    isDevEnv,
+  ]);
+
+  // When a driver unlocks a new service on another device, the passenger UI
+  // updates immediately and plays the same confirmation chime as a payment.
+  useEffect(() => {
+    if (viewMode !== 'passenger' || !currentPassengerSession) {
+      previousRemoteUnlocksRef.current = null;
+      return;
+    }
+
+    const currentIds = normalizeServiceIds(currentPassengerSession.unlockedServices || []);
+    const previous = previousRemoteUnlocksRef.current;
+
+    if (!previous || previous.sessionId !== currentPassengerSession.id) {
+      previousRemoteUnlocksRef.current = {
+        sessionId: currentPassengerSession.id,
+        ids: currentIds,
+      };
+      return;
+    }
+
+    const newlyUnlocked = getNewlyUnlockedServiceIds(previous.ids, currentIds);
+    previousRemoteUnlocksRef.current = {
+      sessionId: currentPassengerSession.id,
+      ids: currentIds,
+    };
+
+    if (newlyUnlocked.length === 0) return;
+
+    saveLocalUnlockedServices(newlyUnlocked);
+    if (newlyUnlocked.includes(SERVICE_IDS.MUSIC)) {
+      setIsMusicUnlocked(true);
+      try {
+        localStorage.setItem('pix_music_unlocked', 'true');
+      } catch {}
+    }
+
+    const now = Date.now();
+    if (now - lastUnlockSoundAtRef.current > 1500) {
+      lastUnlockSoundAtRef.current = now;
+      playPaymentSuccessSound();
+    }
+  }, [
+    viewMode,
+    currentPassengerSession?.id,
+    currentPassengerSession?.unlockedServices,
+  ]);
 
   // Active passenger session unlocked services list from Firestore (authoritative)
   // Combine session-specific unlocks with global default unlocked services from sessionSettings
@@ -1004,6 +1142,7 @@ export default function App() {
 
     const unlockedFromPayment = normalizeServiceIds(payment.serviceIds || []);
 
+    lastUnlockSoundAtRef.current = Date.now();
     playPaymentSuccessSound();
     saveLocalUnlockedServices(unlockedFromPayment);
 
