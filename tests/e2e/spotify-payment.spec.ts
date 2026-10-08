@@ -81,7 +81,7 @@ test('passageiro paga/simula e Spotify é liberado imediatamente', async ({ page
     });
   });
 
-  await page.goto('/passageiro');
+  await page.goto('/passageiro?__e2ePassengerExit=1');
 
   const unlockButton = page.getByTestId('spotify-unlock-button');
   await expect(unlockButton).toBeVisible();
@@ -134,4 +134,23 @@ test('passageiro encerra sessão e volta para cadastro de novo nome', async ({ p
     musicUnlocked: localStorage.getItem('pix_music_unlocked'),
   }));
   expect(stored).toEqual({ sessionId: null, passengerName: null, musicUnlocked: null });
+});
+
+
+test('primeiro acesso do passageiro fica bloqueado até informar o nome', async ({ page }) => {
+  await page.route('**/api/spotify/status', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ configured: true, hasToken: false, isIntegrated: false, userProfile: null }),
+    });
+  });
+
+  await page.goto('/passageiro?__e2ePassengerFresh=1');
+
+  const gate = page.getByTestId('passenger-login-gate');
+  await expect(gate).toBeVisible();
+  await expect(page.getByText('Como podemos te chamar?')).toBeVisible();
+  await expect(page.getByTestId('passenger-name-input')).toBeVisible();
+  await expect(page.getByTestId('passenger-exit-button')).toHaveCount(0);
 });
