@@ -206,7 +206,19 @@ app.get('/api/driver/passenger-sessions', async (req, res) => {
         new Date(a.lastActiveAt || a.createdAt).getTime()
     );
 
-    return res.json({ success: true, sessions });
+    const activeKeys = new Set<string>();
+    const visibleSessions = sessions.filter((session) => {
+      if (session.status !== 'active') return true;
+      const key =
+        String(session.authUid || '').trim() ||
+        String(session.browserId || '').trim() ||
+        session.id;
+      if (activeKeys.has(key)) return false;
+      activeKeys.add(key);
+      return true;
+    });
+
+    return res.json({ success: true, sessions: visibleSessions });
   } catch (error) {
     console.error('Erro ao listar sessões para motorista:', error);
     return res.status(401).json({ error: 'Não foi possível validar o motorista.' });
@@ -224,25 +236,20 @@ app.post('/api/driver/passenger-sessions/:sessionId/resources', async (req, res)
     if (!token) return res.status(401).json({ error: 'Autenticação do motorista ausente.' });
 
     const decoded = await adminAuth.verifyIdToken(token);
-    const provider = decoded.firebase?.sign_in_provider;
-    if (provider === 'anonymous') {
+    if (decoded.firebase?.sign_in_provider === 'anonymous') {
       return res.status(403).json({ error: 'Acesso restrito ao motorista autenticado.' });
     }
 
     const sessionId = String(req.params.sessionId || '').trim();
     if (!sessionId) return res.status(400).json({ error: 'Sessão inválida.' });
 
-    const ref = db.collection('passenger_sessions').doc(sessionId);
-    const snap = await ref.get();
-    if (!snap.exists) {
+    const targetRef = db.collection('passenger_sessions').doc(sessionId);
+    const targetSnap = await targetRef.get();
+    if (!targetSnap.exists) {
       return res.status(404).json({ error: 'Sessão do passageiro não encontrada.' });
     }
 
-    const data = snap.data() || {};
-    const current = normalizeServiceIds(
-      Array.isArray(data.unlockedServices) ? data.unlockedServices : []
-    );
-
+    const targetData = targetSnap.data() || {};
     const requestedIds = Array.isArray(req.body?.serviceIds)
       ? req.body.serviceIds
       : [req.body?.serviceId];
@@ -258,32 +265,83 @@ app.post('/api/driver/passenger-sessions/:sessionId/resources', async (req, res)
     }
 
     const unlock = req.body?.unlock !== false;
-    let updated = [...current];
+    const targetAuthUid = String(targetData.authUid || '').trim();
+    const targetBrowserId = String(targetData.browserId || '').trim();
 
-    if (unlock) {
-      updated = normalizeServiceIds([...updated, ...canonicalIds]);
-    } else {
-      const remove = new Set(canonicalIds);
-      updated = updated.filter((id) => !remove.has(id));
+    let relatedDocs: any[] = [targetSnap];
+
+    if (targetAuthUid) {
+      const relatedSnapshot = await db
+        .collection('passenger_sessions')
+        .where('authUid', '==', targetAuthUid)
+        .get();
+
+      relatedDocs = [];
+      relatedSnapshot.forEach((docSnap: any) => {
+        const data = docSnap.data() || {};
+        if (data.status === 'active' || docSnap.id === sessionId) {
+          relatedDocs.push(docSnap);
+        }
+      });
+    } else if (targetBrowserId) {
+      const allSnapshot = await db.collection('passenger_sessions').get();
+      relatedDocs = [];
+      allSnapshot.forEach((docSnap: any) => {
+        const data = docSnap.data() || {};
+        if (
+          String(data.browserId || '') === targetBrowserId &&
+          (data.status === 'active' || docSnap.id === sessionId)
+        ) {
+          relatedDocs.push(docSnap);
+        }
+      });
+    }
+
+    if (!relatedDocs.some((docSnap: any) => docSnap.id === sessionId)) {
+      relatedDocs.push(targetSnap);
     }
 
     const nowIso = new Date().toISOString();
-    const payload = {
-      unlockedServices: updated,
-      hasMusicUnlocked: updated.includes('spotify_music'),
-      lastResourceChangeAt: nowIso,
-      resourceRevision: Date.now(),
-      updatedAt: nowIso,
-    };
+    const revision = Date.now();
+    const batch = db.batch();
+    let targetUpdated: string[] = [];
 
-    await ref.set(payload, { merge: true });
+    relatedDocs.forEach((docSnap: any) => {
+      const data = docSnap.data() || {};
+      const current = normalizeServiceIds(
+        Array.isArray(data.unlockedServices) ? data.unlockedServices : []
+      );
+
+      const remove = new Set(canonicalIds);
+      const updated = unlock
+        ? normalizeServiceIds([...current, ...canonicalIds])
+        : current.filter((id) => !remove.has(id));
+
+      const payload = {
+        unlockedServices: updated,
+        hasMusicUnlocked: updated.includes('spotify_music'),
+        lastResourceChangeAt: nowIso,
+        resourceRevision: revision,
+        updatedAt: nowIso,
+      };
+
+      batch.set(docSnap.ref, payload, { merge: true });
+      if (docSnap.id === sessionId) targetUpdated = updated;
+    });
+
+    await batch.commit();
 
     return res.json({
       success: true,
+      propagatedSessionIds: relatedDocs.map((docSnap: any) => docSnap.id),
       session: {
         id: sessionId,
-        ...data,
-        ...payload,
+        ...targetData,
+        unlockedServices: targetUpdated,
+        hasMusicUnlocked: targetUpdated.includes('spotify_music'),
+        lastResourceChangeAt: nowIso,
+        resourceRevision: revision,
+        updatedAt: nowIso,
       },
     });
   } catch (error) {
@@ -303,8 +361,7 @@ app.post('/api/passenger/session/start', async (req, res) => {
     if (!token) return res.status(401).json({ error: 'Autenticação do passageiro ausente.' });
 
     const decoded = await adminAuth.verifyIdToken(token);
-    const provider = decoded.firebase?.sign_in_provider;
-    if (provider !== 'anonymous') {
+    if (decoded.firebase?.sign_in_provider !== 'anonymous') {
       return res.status(403).json({ error: 'Somente a sessão anônima do passageiro pode usar esta rota.' });
     }
 
@@ -322,11 +379,21 @@ app.post('/api/passenger/session/start', async (req, res) => {
       .where('authUid', '==', decoded.uid)
       .get();
 
-    let activeDoc: any = null;
+    const activeDocs: any[] = [];
     existingSnapshot.forEach((docSnap: any) => {
-      const data = docSnap.data() || {};
-      if (!activeDoc && data.status === 'active') activeDoc = docSnap;
+      if ((docSnap.data() || {}).status === 'active') activeDocs.push(docSnap);
     });
+
+    activeDocs.sort((a: any, b: any) => {
+      const aData = a.data() || {};
+      const bData = b.data() || {};
+      return (
+        new Date(bData.lastActiveAt || bData.createdAt || 0).getTime() -
+        new Date(aData.lastActiveAt || aData.createdAt || 0).getTime()
+      );
+    });
+
+    const activeDoc = activeDocs[0] || null;
 
     let ride: any = null;
     if (requestedRideId) {
@@ -349,11 +416,13 @@ app.post('/api/passenger/session/start', async (req, res) => {
         );
 
     const existingData = activeDoc ? (activeDoc.data() || {}) : {};
-    const unlockedServices = ride && Array.isArray(ride.defaultUnlockedServices)
-      ? ride.defaultUnlockedServices
-      : Array.isArray(existingData.unlockedServices)
-        ? existingData.unlockedServices
-        : [];
+    const unlockedServices = normalizeServiceIds(
+      ride && Array.isArray(ride.defaultUnlockedServices)
+        ? ride.defaultUnlockedServices
+        : Array.isArray(existingData.unlockedServices)
+          ? existingData.unlockedServices
+          : []
+    );
 
     const session = {
       id: sessionRef.id,
@@ -363,7 +432,8 @@ app.post('/api/passenger/session/start', async (req, res) => {
       lastActiveAt: nowIso,
       status: 'active',
       unlockedServices,
-      hasMusicUnlocked: unlockedServices.includes('spotify_music'),
+      hasMusicUnlocked:
+        Boolean(existingData.hasMusicUnlocked) || unlockedServices.includes('spotify_music'),
       ridePrice: ride ? Number(ride.price) || 0 : Number(existingData.ridePrice) || 0,
       rideId: ride ? ride.id : existingData.rideId || '',
       driverUid: ride
@@ -374,9 +444,27 @@ app.post('/api/passenger/session/start', async (req, res) => {
         : String(publicDriver?.googleEmail || existingData.driverEmail || ''),
       authUid: decoded.uid,
       updatedAt: nowIso,
+      resourceRevision: Number(existingData.resourceRevision) || 0,
+      lastResourceChangeAt: existingData.lastResourceChangeAt || undefined,
     };
 
-    await sessionRef.set(session, { merge: true });
+    const batch = db.batch();
+    batch.set(sessionRef, session, { merge: true });
+
+    activeDocs.slice(1).forEach((duplicateDoc: any) => {
+      batch.set(
+        duplicateDoc.ref,
+        {
+          status: 'expired',
+          expiredAt: nowIso,
+          updatedAt: nowIso,
+          deduplicatedIntoSessionId: sessionRef.id,
+        },
+        { merge: true }
+      );
+    });
+
+    await batch.commit();
 
     return res.json({
       success: true,
@@ -409,7 +497,11 @@ app.get('/api/passenger/session/current', async (req, res) => {
 
     if (requestedSessionId) {
       const requested = await db.collection('passenger_sessions').doc(requestedSessionId).get();
-      if (requested.exists && requested.data()?.authUid === decoded.uid) {
+      if (
+        requested.exists &&
+        requested.data()?.authUid === decoded.uid &&
+        requested.data()?.status === 'active'
+      ) {
         selectedDoc = requested;
       }
     }
