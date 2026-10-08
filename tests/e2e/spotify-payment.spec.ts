@@ -428,7 +428,8 @@ test('dois dispositivos: motorista libera Spotify e passageiro recebe em tempo r
   await expect(passengerPage.getByTestId('spotify-controller-unlocked')).toBeVisible({ timeout: 7000 });
   await expect(passengerPage.getByText('Músicas Liberadas!')).toBeVisible();
   await expect(passengerPage.getByTestId('resource-unlock-modal')).toBeVisible();
-  await expect(passengerPage.getByText('Escolha de músicas foi liberado pelo motorista.')).toBeVisible();
+  await expect(passengerPage.getByText(/Escolha de músicas foi liberad[oa] pelo motorista\./)).toBeVisible();
+  await expect(passengerPage.locator('#passenger-resource-spotify_music')).toBeInViewport();
 
   await expect.poll(
     async () => passengerPage.evaluate(() => (window as any).__unlockSoundCount || 0),
