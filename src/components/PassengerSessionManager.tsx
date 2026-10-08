@@ -421,7 +421,7 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
             </div>
             <h2 className="text-lg font-black text-slate-900">Como podemos te chamar?</h2>
             <p className="text-xs text-slate-500 mt-1">
-              Digite seu nome para o motorista identificar você e liberar os recursos da viagem.
+              Digite seu nome para o motorista identificar você e liberar os recursos disponíveis.
             </p>
             {currentDeviceAnySession?.status === 'expired' && (
               <p className="text-[11px] font-bold text-amber-600 mt-2">
@@ -496,7 +496,7 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
               </span>
               <h4 className="text-sm font-bold text-white">Múltiplos Passageiros Simultâneos</h4>
               <p className="text-xs text-slate-400 leading-relaxed mt-1">
-                Ative para permitir que 2 ou mais pessoas controlem e paguem recursos da viagem ao mesmo tempo.
+                Ative para permitir que 2 ou mais pessoas controlem e paguem recursos ao mesmo tempo.
               </p>
             </div>
             <button
