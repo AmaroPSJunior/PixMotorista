@@ -1139,6 +1139,13 @@ export default function App() {
           driverEmail={getEffectiveDriverEmail(driver.googleEmail)}
           requirePassengerIdentification={viewMode === 'passenger' && !passengerHasNamedActiveSession}
           onIdentifyPassenger={handlePassengerIdentify}
+          onSessionUpdated={(updatedSession) => {
+            setPassengerSessions((prev) =>
+              prev.map((session) =>
+                session.id === updatedSession.id ? updatedSession : session
+              )
+            );
+          }}
         />
 
         {/* Requirement 1: Pix Section with QR Code and Email Pix Key */}
