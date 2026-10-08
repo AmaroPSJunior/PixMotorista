@@ -994,11 +994,6 @@ export default function App() {
     const approved = payment.status === 'approved' && Boolean(payment.paymentActivated);
     if (!approved) return;
 
-    if (payment.rideId && currentRide && payment.rideId !== currentRide.id) {
-      console.warn('Pagamento aprovado pertence a outra corrida; ignorando atualização local.');
-      return;
-    }
-
     const unlockedFromPayment = normalizeServiceIds(payment.serviceIds || []);
 
     lastUnlockSoundAtRef.current = Date.now();
@@ -1030,13 +1025,6 @@ export default function App() {
     setMpModalServiceIds([]);
     setIsMpModalOpen(false);
 
-    if (payment.rideId && currentRide?.id === payment.rideId) {
-      setCurrentRide({
-        ...currentRide,
-        paymentStatus: currentRide.paymentStatus,
-        paymentId: payment.paymentId,
-      });
-    }
   };
 
   const handleResetDefaults = () => {
