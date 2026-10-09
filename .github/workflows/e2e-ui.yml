@@ -1,6 +1,7 @@
 name: E2E UI
 
 on:
+  pull_request:
   push:
     branches: [main]
   workflow_dispatch:
@@ -29,6 +30,7 @@ jobs:
         run: npm run test:e2e
 
       - name: Backend/Firebase integration smoke
+        if: github.event_name == 'push'
         run: |
           node - <<'NODE'
           const base = 'https://pix-motorista.vercel.app';
@@ -45,6 +47,12 @@ jobs:
           });
           if (unauthorized.status !== 401) {
             throw new Error('Passenger close endpoint auth guard failed: ' + unauthorized.status);
+          }
+          const driverClose = await fetch(base + '/api/driver/passenger-sessions/integration-probe/close', {
+            method: 'POST',
+          });
+          if (driverClose.status !== 401) {
+            throw new Error('Driver close endpoint auth guard failed: ' + driverClose.status);
           }
           console.log('Backend/Firebase integration smoke passed.');
           NODE

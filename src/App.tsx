@@ -4,7 +4,7 @@ import { PixSection } from './components/PixSection';
 import { DriverPixDashboard } from './components/DriverPixDashboard';
 import { DriverAutomotiveHeader } from './components/DriverAutomotiveHeader';
 import { DriverSection } from './components/AutomotiveDisclosure';
-import { ServicesList } from './components/ServicesList';
+import { ServicesList, renderServiceIcon } from './components/ServicesList';
 import { TipSection } from './components/TipSection';
 import { TotalSummaryBar } from './components/TotalSummaryBar';
 import { DriverEditModal } from './components/DriverEditModal';
@@ -17,7 +17,7 @@ import { MercadoPagoModal } from './components/MercadoPagoModal';
 import { LogoutConfirmModal } from './components/LogoutConfirmModal';
 import { DEFAULT_DRIVER_PROFILE, DEFAULT_SERVICES } from './data/defaultData';
 import { DriverProfile, AdditionalService, MercadoPagoPayment, PassengerSession, SessionSettings, getItemType } from './types';
-import { HelpCircle, ShieldCheck, Eye, Smartphone, ArrowRight, Sparkles, LogOut, Database, Users } from 'lucide-react';
+import { HelpCircle, ShieldCheck, Eye, Smartphone, ArrowRight, LogOut, Database, Users } from 'lucide-react';
 import { armPaymentSuccessSound, playPaymentSuccessSound } from './utils/audio';
 import { PassengerSessionManager } from './components/PassengerSessionManager';
 import { getOrCreateBrowserId } from './utils/browserId';
@@ -108,6 +108,7 @@ export default function App() {
   });
 
   const previousRemoteUnlocksRef = useRef<{ sessionId: string; ids: string[] } | null>(null);
+  const lastActivePassengerSessionRef = useRef<string | null>(null);
   const lastUnlockSoundAtRef = useRef<number>(0);
 
   // Firebase Auth is authoritative. localStorage is never used as proof of identity.
@@ -463,6 +464,27 @@ export default function App() {
         } as PassengerSession)
       : undefined);
 
+  // A driver can close this session from another device. Observe the persisted
+  // status, rather than waiting for the passenger to tap a button or refresh.
+  useEffect(() => {
+    if (viewMode !== 'passenger') {
+      lastActivePassengerSessionRef.current = null;
+      return;
+    }
+    const lastId = lastActivePassengerSessionRef.current;
+    const ended = lastId && passengerSessions.find((session) => session.id === lastId && session.status !== 'active');
+    if (ended) {
+      lastActivePassengerSessionRef.current = null;
+      setActiveSessionId(null);
+      setResourceUnlockNotice([]);
+      setShowPassengerThanksModal(true);
+      return;
+    }
+    if (realCurrentPassengerSession?.status === 'active' && !showPassengerThanksModal) {
+      lastActivePassengerSessionRef.current = realCurrentPassengerSession.id;
+    }
+  }, [viewMode, realCurrentPassengerSession?.id, passengerSessions, showPassengerThanksModal]);
+
   const displayPassengerName = currentPassengerSession?.passengerName || rawPassengerName || 'Passageiro';
 
   const handlePassengerIdentify = async (rawName: string) => {
@@ -742,6 +764,17 @@ export default function App() {
           }
         );
 
+        if (response.status === 410) {
+          const payload = await response.json().catch(() => ({}));
+          if (!cancelled) {
+            setPassengerSessions((prev) => prev.map((session) =>
+              session.id === currentPassengerSession.id
+                ? { ...session, status: payload.session?.status || 'closed' }
+                : session
+            ));
+          }
+          return;
+        }
         if (!response.ok) return;
         const payload = await response.json().catch(() => ({}));
         if (cancelled || !payload?.session?.id) return;
@@ -1379,7 +1412,7 @@ export default function App() {
         </footer>
       </main>
       {showPassengerThanksModal && viewMode === 'passenger' && (
-        <div data-testid="passenger-thanks-modal" className="fixed inset-0 z-[200] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div data-testid="passenger-thanks-modal" className="fixed inset-0 z-[300] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-sm rounded-3xl bg-white border border-slate-200 shadow-2xl p-6 text-center">
             <div className="w-14 h-14 mx-auto rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mb-4">
               <span className="text-2xl">✓</span>
@@ -1430,7 +1463,15 @@ export default function App() {
         >
           <div className="w-full max-w-sm rounded-3xl bg-white border border-emerald-200 shadow-2xl p-6 text-center">
             <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto mb-4">
-              <Sparkles className="w-8 h-8" />
+              {resourceUnlockNotice.map((resourceId) => {
+                const service = services.find((item) => normalizeServiceId(item.id) === resourceId);
+                const fallbackIcon = resourceId === SERVICE_IDS.MUSIC ? 'Music'
+                  : resourceId === SERVICE_IDS.WIFI ? 'Wifi'
+                    : resourceId === SERVICE_IDS.CHARGER ? 'Zap' : 'Sparkles';
+                return <span key={resourceId} data-testid={`unlock-icon-${resourceId}`}>
+                  {renderServiceIcon(service?.iconName || fallbackIcon, 'w-8 h-8')}
+                </span>;
+              })}
             </div>
             <h2 className="text-xl font-black text-slate-900">Recurso liberado!</h2>
             <p className="text-sm text-slate-600 mt-2">
