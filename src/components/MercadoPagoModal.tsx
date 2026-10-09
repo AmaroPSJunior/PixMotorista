@@ -15,6 +15,9 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { MercadoPagoPayment } from '../types';
+import type { DriverPixLayout } from '../types';
+import { DriverPixCheckout } from './DriverPixCheckout';
+import { driverPixPaymentPhase } from '../domain/driverPixLayout';
 import {
   createMercadoPagoPixPayment,
   checkMercadoPagoPaymentStatus,
@@ -35,6 +38,7 @@ interface MercadoPagoModalProps {
   serviceIds?: string[];
   productQuantities?: Record<string, number>;
   onPaymentSuccess?: (payment: MercadoPagoPayment) => void;
+  layout?: DriverPixLayout;
 }
 
 export const MercadoPagoModal: React.FC<MercadoPagoModalProps> = ({
@@ -48,17 +52,21 @@ export const MercadoPagoModal: React.FC<MercadoPagoModalProps> = ({
   serviceIds = [],
   productQuantities = {},
   onPaymentSuccess,
+  layout = 'legacy',
 }) => {
   const [payment, setPayment] = useState<MercadoPagoPayment | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
+  const [copyError, setCopyError] = useState<boolean>(false);
   const [mpStatus, setMpStatus] = useState<MercadoPagoStatusResponse | null>(null);
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const [hasPlayedSound, setHasPlayedSound] = useState<boolean>(false);
 
-  const isApproved = payment?.status === 'approved' || Boolean(payment?.paymentActivated);
+  const isApproved = layout === 'automotive'
+    ? driverPixPaymentPhase(payment, false, null) === 'confirmed'
+    : payment?.status === 'approved' || Boolean(payment?.paymentActivated);
 
   // Play confirmation chime sound as soon as payment is approved
   useEffect(() => {
@@ -74,6 +82,9 @@ export const MercadoPagoModal: React.FC<MercadoPagoModalProps> = ({
       setPayment(null);
       setError(null);
       setHasPlayedSound(false);
+      setQrCodeDataUrl('');
+      setCopiedCode(false);
+      setCopyError(false);
       return;
     }
 
@@ -158,11 +169,16 @@ export const MercadoPagoModal: React.FC<MercadoPagoModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleCopyCode = () => {
+  const handleCopyCode = async () => {
     if (payment?.qrCode) {
-      navigator.clipboard.writeText(payment.qrCode);
-      setCopiedCode(true);
-      setTimeout(() => setCopiedCode(false), 2500);
+      try {
+        await navigator.clipboard.writeText(payment.qrCode);
+        setCopyError(false);
+        setCopiedCode(true);
+        setTimeout(() => setCopiedCode(false), 2500);
+      } catch {
+        setCopyError(true);
+      }
     }
   };
 
@@ -193,6 +209,22 @@ export const MercadoPagoModal: React.FC<MercadoPagoModalProps> = ({
       setIsSimulating(false);
     }
   };
+
+  if (layout === 'automotive') {
+    return (
+      <DriverPixCheckout
+        payment={payment}
+        amount={totalAmount}
+        qrImage={qrCodeDataUrl}
+        isLoading={isLoading}
+        error={error}
+        copiedCode={copiedCode}
+        copyError={copyError}
+        onCopyCode={handleCopyCode}
+        onClose={onClose}
+      />
+    );
+  }
 
   return (
     <div data-testid="mercadopago-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">

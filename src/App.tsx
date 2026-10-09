@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
 import { PixSection } from './components/PixSection';
+import { DriverPixDashboard } from './components/DriverPixDashboard';
+import { DriverAutomotiveHeader } from './components/DriverAutomotiveHeader';
+import { DriverSection } from './components/AutomotiveDisclosure';
 import { ServicesList } from './components/ServicesList';
 import { TipSection } from './components/TipSection';
 import { TotalSummaryBar } from './components/TotalSummaryBar';
@@ -40,6 +43,7 @@ import { PassengerApp } from './views/PassengerApp';
 import { useRideSession } from './state/useRideSession';
 import { getNewlyUnlockedServiceIds, normalizeServiceId, normalizeServiceIds, SERVICE_IDS } from './domain/serviceIds';
 import { isPassengerCloseTerminalStatus } from './domain/businessRules';
+import { normalizeDriverPixLayout } from './domain/driverPixLayout';
 import { clearPassengerSessionCache, readPassengerSessionCache, writePassengerSessionCache } from './utils/passengerSessionCache';
 
 // Release v1.4.22
@@ -1167,12 +1171,21 @@ export default function App() {
     );
   }
 
+  const automotiveDriver = viewMode === 'driver' && normalizeDriverPixLayout(driver.driverPixLayout) === 'automotive';
   const ExperienceApp = viewMode === 'driver' ? DriverApp : PassengerApp;
 
   return (
     <ExperienceApp
+      automotive={automotiveDriver}
       header={
-        <Header
+        automotiveDriver ? (
+          <DriverAutomotiveHeader
+            driver={driver}
+            onOpenSettings={handleOpenEditModal}
+            onPassengerView={handleToggleViewMode}
+            onLogout={() => setIsLogoutConfirmModalOpen(true)}
+          />
+        ) : <Header
           driver={driver}
           passengerName={displayPassengerName}
           onOpenEditModal={handleOpenEditModal}
@@ -1193,7 +1206,7 @@ export default function App() {
       }
     >
 
-      <main className="max-w-xl mx-auto px-4 mt-5 space-y-5">
+      <main className={`${automotiveDriver ? 'max-w-6xl px-4 sm:px-6' : 'max-w-xl px-4'} mx-auto mt-5 space-y-5`}>
         {/* Development Environment Administrative Banners */}
         {isDevEnv && (
           <>
@@ -1230,7 +1243,29 @@ export default function App() {
           </>
         )}
 
+        {automotiveDriver && (
+          <div id="pix-section-wrapper">
+            <DriverPixDashboard
+              driver={driver}
+              chargeAmount={totalAmount}
+              rideAmount={currentPassengerSession?.ridePrice || ridePrice || 0}
+              passengerName={currentPassengerSession?.passengerName}
+              ridePaid={Boolean(currentPassengerSession?.isRidePaid)}
+              selectedServicesCount={selectedServiceIds.length}
+              selectedTip={selectedTip}
+              onOpenSettings={handleOpenEditModal}
+              onCharge={(amount) => {
+                const parts: string[] = [];
+                if (selectedServicesTotal > 0) parts.push(`Serviços A Bordo (${selectedServiceIds.length})`);
+                if (selectedTip > 0) parts.push('Caixinha');
+                handleOpenMercadoPagoModal(amount, parts.join(' + ') || 'Pagamento via Pix');
+              }}
+            />
+          </div>
+        )}
+
         {/* Central Passenger Session Management System */}
+        <DriverSection automotive={automotiveDriver} title="Passageiros e corrida" description="Abra para gerenciar a corrida com o veículo parado">
         <PassengerSessionManager
           viewMode={viewMode}
           sessions={passengerSessions}
@@ -1254,9 +1289,10 @@ export default function App() {
             );
           }}
         />
+        </DriverSection>
 
         {/* Requirement 1: Pix Section with QR Code and Email Pix Key */}
-        <div id="pix-section-wrapper">
+        {!automotiveDriver && <div id="pix-section-wrapper">
           <PixSection
             driver={driver}
             totalAmount={totalAmount}
@@ -1280,8 +1316,9 @@ export default function App() {
               );
             }}
           />
-        </div>
+        </div>}
 
+        <DriverSection automotive={automotiveDriver} title="Produtos e serviços" description="Ajuste recursos, produtos e caixinha com o veículo parado">
         {/* Wi-Fi Connection & QR Code Section (Rendered right above Spotify) */}
         <div id="passenger-resource-wifi">
           <WifiController
@@ -1328,9 +1365,10 @@ export default function App() {
           selectedTip={selectedTip}
           onSelectTip={(amt) => setSelectedTip(amt)}
         />
+        </DriverSection>
 
         {/* Trust & Safe Footer Badge */}
-        <footer className="pt-2 text-center text-xs text-slate-500 space-y-2">
+        <footer className={`pt-2 text-center text-xs space-y-2 ${automotiveDriver ? 'text-slate-300' : 'text-slate-500'}`}>
           <div className="flex items-center justify-center gap-1.5 text-slate-400 font-medium">
             <ShieldCheck className="w-4 h-4 text-emerald-500" />
             <span>Pagamento direto e seguro via Pix sem taxas intermediárias</span>
@@ -1365,7 +1403,7 @@ export default function App() {
 
 
       {/* Floating total summary bar when passenger selects options */}
-      <TotalSummaryBar
+      {!automotiveDriver && <TotalSummaryBar
         ridePrice={0}
         selectedServicesCount={selectedServiceIds.length}
         selectedServicesTotal={selectedServicesTotal}
@@ -1380,7 +1418,7 @@ export default function App() {
 
           handleOpenMercadoPagoModal(totalAmount, description);
         }}
-      />
+      />}
 
       {viewMode === 'passenger' && resourceUnlockNotice.length > 0 && (
         <div
@@ -1423,6 +1461,7 @@ export default function App() {
       {/* Mercado Pago Checkout & Instant Payment Modal */}
       <MercadoPagoModal
         isOpen={isMpModalOpen}
+        layout={automotiveDriver ? 'automotive' : 'legacy'}
         onClose={() => setIsMpModalOpen(false)}
         totalAmount={mpModalAmount}
         description={mpModalDescription}

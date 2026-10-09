@@ -26,6 +26,7 @@ try {
 }
 import firebaseConfig from '../../firebase-applet-config.json';
 import { DriverProfile, AdditionalService, PassengerSession, SessionSettings, Ride, RideStatus } from '../types';
+import { normalizeDriverPixLayout } from '../domain/driverPixLayout';
 import { DEFAULT_DRIVER_PROFILE, DEFAULT_SERVICES } from '../data/defaultData';
 import { normalizeServiceId, normalizeServiceIds } from '../domain/serviceIds';
 
@@ -155,6 +156,7 @@ export function parseDriverProfileDoc(data: any, fallbackEmail: string): DriverP
     showSpotifyController: data.showSpotifyController !== false,
     allowPassengerMusicControl: Boolean(data.allowPassengerMusicControl),
     spotifyDriverPlaylist: data.spotifyDriverPlaylist || '',
+    driverPixLayout: normalizeDriverPixLayout(data.driverPixLayout),
     printSheetLayout: data.printSheetLayout || undefined,
     printPaperSize: data.printPaperSize || undefined,
     printPaperOrientation: data.printPaperOrientation || undefined,

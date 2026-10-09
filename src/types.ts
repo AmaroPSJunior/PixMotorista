@@ -6,6 +6,7 @@ export interface DraggableItemPosition {
 }
 
 export type PrintSheetLayoutMap = Record<string, DraggableItemPosition>;
+export type DriverPixLayout = 'legacy' | 'automotive';
 
 export interface DriverProfile {
   name: string;
@@ -42,6 +43,7 @@ export interface DriverProfile {
   showSpotifyController?: boolean;
   allowPassengerMusicControl?: boolean;
   spotifyDriverPlaylist?: string;
+  driverPixLayout?: DriverPixLayout;
 }
 
 export interface AdditionalService {
@@ -82,6 +84,8 @@ export interface MercadoPagoPayment {
   updatedAt?: string;
   isRealMercadoPago?: boolean;
   message?: string;
+  authError?: boolean;
+  apiErrorDetail?: string;
 }
 
 export type RideStatus = 'created' | 'active' | 'completed' | 'expired' | 'cancelled';
