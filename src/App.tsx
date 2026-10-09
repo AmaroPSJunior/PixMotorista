@@ -37,7 +37,7 @@ import {
 } from './lib/firebase';
 
 import { isDevEnvironment, getDriverEmailFromUrl, getEffectiveDriverEmail, getExperienceFromUrl, navigateToExperience, getPublicPassengerUrl } from './utils/urlHelper';
-import { AuthenticatedDriver, ensurePassengerAuth, getCurrentIdToken, signOutDriver, signOutPassenger, subscribeDriverAuth } from './lib/auth';
+import { AuthenticatedDriver, ensurePassengerAuth, getCurrentIdToken, signOutDriver, subscribeDriverAuth } from './lib/auth';
 import { DriverApp } from './views/DriverApp';
 import { PassengerApp } from './views/PassengerApp';
 import { useRideSession } from './state/useRideSession';
@@ -87,7 +87,6 @@ export default function App() {
   const [isGoogleAuthModalOpen, setIsGoogleAuthModalOpen] = useState<boolean>(false);
   const [isLogoutConfirmModalOpen, setIsLogoutConfirmModalOpen] = useState<boolean>(false);
   const [isMercadoPagoSettingsModalOpen, setIsMercadoPagoSettingsModalOpen] = useState<boolean>(false);
-  const [showPassengerThanksModal, setShowPassengerThanksModal] = useState<boolean>(false);
   const [resourceUnlockNotice, setResourceUnlockNotice] = useState<string[]>([]);
   const [forceNewPassengerSession, setForceNewPassengerSession] = useState<boolean>(false);
 
@@ -432,11 +431,10 @@ export default function App() {
       isCurrentPassengerSessionValid(session)
   );
 
-  const realCurrentPassengerSession =
+  const realCurrentPassengerSession = forceNewPassengerSession ? undefined :
     (registeredSessionId
       ? passengerOwnedSessions.find((session) => session.id === registeredSessionId)
-      : undefined) ||
-    passengerOwnedSessions.find((session) => {
+      : passengerOwnedSessions.find((session) => {
       if (session.browserId !== currentBrowserId) return false;
       if (
         rawPassengerName &&
@@ -445,11 +443,11 @@ export default function App() {
         return false;
       }
       return true;
-    });
+    }));
 
   const currentPassengerSession =
     realCurrentPassengerSession ||
-    (isDevEnv &&
+    (!forceNewPassengerSession && isDevEnv &&
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).has('__e2ePassengerExit')
       ? ({
@@ -464,6 +462,22 @@ export default function App() {
         } as PassengerSession)
       : undefined);
 
+  const resetPassengerAccess = () => {
+    try {
+      localStorage.removeItem('pix_registered_session_id');
+      localStorage.removeItem('pix_registered_passenger_name');
+      localStorage.removeItem('pix_music_unlocked');
+    } catch {}
+    clearPassengerSessionCache();
+    lastActivePassengerSessionRef.current = null;
+    setForceNewPassengerSession(true);
+    setActiveSessionId(null);
+    setResourceUnlockNotice([]);
+    setLocalUnlockedServices([]);
+    setIsMusicUnlocked(false);
+    setIsMpModalOpen(false);
+  };
+
   // A driver can close this session from another device. Observe the persisted
   // status, rather than waiting for the passenger to tap a button or refresh.
   useEffect(() => {
@@ -474,16 +488,13 @@ export default function App() {
     const lastId = lastActivePassengerSessionRef.current;
     const ended = lastId && passengerSessions.find((session) => session.id === lastId && session.status !== 'active');
     if (ended) {
-      lastActivePassengerSessionRef.current = null;
-      setActiveSessionId(null);
-      setResourceUnlockNotice([]);
-      setShowPassengerThanksModal(true);
+      resetPassengerAccess();
       return;
     }
-    if (realCurrentPassengerSession?.status === 'active' && !showPassengerThanksModal) {
+    if (realCurrentPassengerSession?.status === 'active') {
       lastActivePassengerSessionRef.current = realCurrentPassengerSession.id;
     }
-  }, [viewMode, realCurrentPassengerSession?.id, passengerSessions, showPassengerThanksModal]);
+  }, [viewMode, realCurrentPassengerSession?.id, passengerSessions]);
 
   const displayPassengerName = currentPassengerSession?.passengerName || rawPassengerName || 'Passageiro';
 
@@ -537,6 +548,7 @@ export default function App() {
       localStorage.setItem('pix_registered_session_id', session.id);
       localStorage.setItem('pix_registered_passenger_name', name);
     } catch {}
+    setForceNewPassengerSession(false);
   };
 
   const passengerHasNamedActiveSession =
@@ -544,6 +556,8 @@ export default function App() {
     Boolean(
       currentPassengerSession &&
         currentPassengerSession.status === 'active' &&
+        (currentPassengerSession.id === 'e2e-exit-session' ||
+          (registeredSessionId === currentPassengerSession.id && Boolean(rawPassengerName))) &&
         currentPassengerSession.passengerName?.trim() &&
         currentPassengerSession.passengerName.trim().toLowerCase() !== 'passageiro'
     );
@@ -552,10 +566,15 @@ export default function App() {
     isDevEnv &&
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).has('__e2ePassengerFresh');
+  const isPassengerExitE2E =
+    isDevEnv &&
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).has('__e2ePassengerExit');
 
   const passengerEntryResolved =
     viewMode !== 'passenger' ||
     isFreshPassengerE2E ||
+    isPassengerExitE2E ||
     (passengerAuthResolved && passengerSessionsResolved);
 
   useEffect(() => {
@@ -659,11 +678,6 @@ export default function App() {
     sessionSettings.autoExpireMinutes,
   ]);
 
-  const isPassengerExitE2E =
-    isDevEnv &&
-    typeof window !== 'undefined' &&
-    new URLSearchParams(window.location.search).has('__e2ePassengerExit');
-
   const handlePassengerExit = async () => {
     if (!currentPassengerSession && !isPassengerExitE2E) return;
 
@@ -692,45 +706,15 @@ export default function App() {
         }
       }
 
-      setActiveSessionId(null);
-      setShowPassengerThanksModal(true);
+      resetPassengerAccess();
+      if (isPassengerExitE2E) {
+        window.history.replaceState({}, '', '/passageiro?__e2ePassengerFresh=1');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
     } catch (error: any) {
       console.error('Falha ao sair da sessão:', error);
       alert(error?.message || 'Não foi possível encerrar a sessão.');
     }
-  };
-
-  const handlePassengerThanksConfirm = async () => {
-    try {
-      localStorage.removeItem('pix_registered_session_id');
-      localStorage.removeItem('pix_registered_passenger_name');
-      localStorage.removeItem('pix_music_unlocked');
-    } catch {}
-    clearPassengerSessionCache();
-
-    setLocalUnlockedServices([]);
-    setIsMusicUnlocked(false);
-    setActiveSessionId(null);
-    setPassengerSessions([]);
-    setPassengerAuthUid(null);
-    setShowPassengerThanksModal(false);
-    setForceNewPassengerSession(false);
-
-    if (isPassengerExitE2E) {
-      window.history.replaceState({}, '', '/passageiro?__e2ePassengerFresh=1');
-      window.dispatchEvent(new PopStateEvent('popstate'));
-      return;
-    }
-
-    try {
-      await signOutPassenger();
-    } catch (error) {
-      console.error('Falha ao finalizar autenticação anônima do passageiro:', error);
-    }
-
-    // Hard reload guarantees a completely fresh anonymous identity/session and
-    // returns the UI to the passenger-name onboarding state.
-    window.location.replace(window.location.href);
   };
 
 
@@ -1204,6 +1188,31 @@ export default function App() {
     );
   }
 
+  // No passenger payment or service component is mounted before identification.
+  // This also applies immediately after local exit or remote closure.
+  if (viewMode === 'passenger' && (!passengerEntryResolved || !passengerHasNamedActiveSession)) {
+    return (
+      <PassengerApp header={null}>
+        {passengerEntryResolved ? (
+          <PassengerSessionManager
+            viewMode="passenger"
+            sessions={passengerSessions}
+            settings={sessionSettings}
+            services={services}
+            activeSessionId={activeSessionId}
+            onSetActiveSessionId={setActiveSessionId}
+            requirePassengerIdentification
+            onIdentifyPassenger={handlePassengerIdentify}
+          />
+        ) : (
+          <div data-testid="passenger-entry-loading" className="fixed inset-0 bg-slate-950 flex items-center justify-center text-white font-bold" role="status">
+            Preparando acesso do passageiro...
+          </div>
+        )}
+      </PassengerApp>
+    );
+  }
+
   const automotiveDriver = viewMode === 'driver' && normalizeDriverPixLayout(driver.driverPixLayout) === 'automotive';
   const ExperienceApp = viewMode === 'driver' ? DriverApp : PassengerApp;
 
@@ -1411,30 +1420,6 @@ export default function App() {
           </p>
         </footer>
       </main>
-      {showPassengerThanksModal && viewMode === 'passenger' && (
-        <div data-testid="passenger-thanks-modal" className="fixed inset-0 z-[300] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-sm rounded-3xl bg-white border border-slate-200 shadow-2xl p-6 text-center">
-            <div className="w-14 h-14 mx-auto rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mb-4">
-              <span className="text-2xl">✓</span>
-            </div>
-            <h2 className="text-xl font-black text-slate-900">Obrigado!</h2>
-            <p className="text-sm text-slate-500 mt-2">
-              Sua sessão foi encerrada com sucesso.
-            </p>
-            <button
-              data-testid="passenger-thanks-ok"
-              type="button"
-              onClick={handlePassengerThanksConfirm}
-              className="mt-5 w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 text-sm"
-            >
-              OK
-            </button>
-          </div>
-        </div>
-      )}
-
-
-
       {/* Floating total summary bar when passenger selects options */}
       {!automotiveDriver && <TotalSummaryBar
         ridePrice={0}
