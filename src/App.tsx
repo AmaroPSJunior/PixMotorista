@@ -566,10 +566,15 @@ export default function App() {
     isDevEnv &&
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).has('__e2ePassengerFresh');
+  const isPassengerExitE2E =
+    isDevEnv &&
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).has('__e2ePassengerExit');
 
   const passengerEntryResolved =
     viewMode !== 'passenger' ||
     isFreshPassengerE2E ||
+    isPassengerExitE2E ||
     (passengerAuthResolved && passengerSessionsResolved);
 
   useEffect(() => {
@@ -672,11 +677,6 @@ export default function App() {
     passengerHasNamedActiveSession,
     sessionSettings.autoExpireMinutes,
   ]);
-
-  const isPassengerExitE2E =
-    isDevEnv &&
-    typeof window !== 'undefined' &&
-    new URLSearchParams(window.location.search).has('__e2ePassengerExit');
 
   const handlePassengerExit = async () => {
     if (!currentPassengerSession && !isPassengerExitE2E) return;
