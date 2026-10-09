@@ -1,6 +1,7 @@
 name: E2E UI
 
 on:
+  pull_request:
   push:
     branches: [main]
   workflow_dispatch:
@@ -29,6 +30,7 @@ jobs:
         run: npm run test:e2e
 
       - name: Backend/Firebase integration smoke
+        if: github.event_name == 'push'
         run: |
           node - <<'NODE'
           const base = 'https://pix-motorista.vercel.app';
