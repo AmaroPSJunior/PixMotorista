@@ -66,6 +66,7 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
   const [showFullHistory, setShowFullHistory] = useState(false);
   const [identifyError, setIdentifyError] = useState('');
   const [isIdentifyingPassenger, setIsIdentifyingPassenger] = useState(false);
+  const [closingSessionId, setClosingSessionId] = useState<string | null>(null);
 
   const registeredName = (
     typeof localStorage !== 'undefined'
@@ -227,12 +228,25 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
   };
 
   const handleCloseSession = async (sessionId: string) => {
-    const now = new Date();
-    await updatePassengerSessionStatus(sessionId, 'closed', {
-      closedAt: now.toISOString(),
-      reactivationExpiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
-    });
-    if (activeSessionId === sessionId) onSetActiveSessionId(null);
+    if (closingSessionId) return;
+    setClosingSessionId(sessionId);
+    try {
+      const token = await getCurrentIdToken();
+      const response = await fetch(`/api/driver/passenger-sessions/${encodeURIComponent(sessionId)}/close`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.session) {
+        throw new Error(payload.error || 'Não foi possível encerrar a sessão.');
+      }
+      onSessionUpdated?.(payload.session);
+      if (activeSessionId === sessionId) onSetActiveSessionId(null);
+    } catch (error: any) {
+      alert(error?.message || 'Não foi possível encerrar a sessão.');
+    } finally {
+      setClosingSessionId(null);
+    }
   };
 
   const handlePassengerExit = async () => {
@@ -756,10 +770,12 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
                                 <button
                                   type="button"
                                   onClick={() => handleCloseSession(session.id)}
+                                  disabled={closingSessionId !== null}
+                                  data-testid={`driver-close-session-${session.id}`}
                                   className="px-3.5 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 font-extrabold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
                                 >
                                   <Power className="w-3.5 h-3.5" />
-                                  <span>Encerrar</span>
+                                  <span>{closingSessionId === session.id ? 'Encerrando...' : 'Encerrar'}</span>
                                 </button>
                               )}
                             </div>

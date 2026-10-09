@@ -29,3 +29,11 @@ Não há migração de banco: `driverPixLayout` é um campo opcional no perfil F
 Para validação manual em uma central de carro: entre como motorista, ative e salve a chave, confirme o painel em tela larga e estreita; selecione um adicional, abra a cobrança sandbox e verifique que ela só confirma após resposta real do servidor. Desative a chave e salve para conferir o retorno ao layout anterior. Repita na visão do passageiro para verificar que ela não mudou. O teste sandbox depende de credenciais e backend configurados.
 
 O CI executa `npm install`, `npm test`, `npm run lint` e `npm run build`. O E2E em `main` usa respostas simuladas nas ações de pagamento e faz smoke de backend separadamente; ele não é comprovação de um pagamento real.
+
+## Encerramento remoto e aviso de recurso
+
+O botão **Encerrar** do motorista chama `POST /api/driver/passenger-sessions/:sessionId/close`, exige autenticação de motorista e grava o estado `closed` no servidor antes de atualizar a lista. Um erro retorna mensagem visível e deixa a sessão ativa. A tela do passageiro recebe a mudança por Firestore ou pela consulta de fallback a cada dois segundos, encerra o acesso e mostra o modal de saída. Ao confirmar, limpa sessão e recursos locais. A consulta de uma sessão encerrada devolve `410` com o status específico, sem substituí-la por outra sessão do mesmo usuário.
+
+O modal de liberação remota busca o serviço na lista e usa o mesmo mapeamento de `iconName` da lista de serviços. Para música, Wi-Fi e carregador, há ícones padrão quando o cadastro ainda não carregou. Se mais de um recurso for liberado, exibe os ícones de cada um.
+
+O teste E2E `encerramento remoto tira o passageiro da sessão sem recarregar` cobre a atualização do outro dispositivo, o modal e a volta ao cadastro. O teste de dois dispositivos também verifica a nota musical do Spotify no modal. A rota de encerramento exige credenciais reais nos ambientes integrados; os testes de interface interceptam a API e não encerram sessões reais.

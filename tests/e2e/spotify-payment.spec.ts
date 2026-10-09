@@ -428,6 +428,7 @@ test('dois dispositivos: motorista libera Spotify e passageiro recebe em tempo r
   await expect(passengerPage.getByTestId('spotify-controller-unlocked')).toBeVisible({ timeout: 7000 });
   await expect(passengerPage.getByText('Músicas Liberadas!')).toBeVisible();
   await expect(passengerPage.getByTestId('resource-unlock-modal')).toBeVisible();
+  await expect(passengerPage.getByTestId('unlock-icon-spotify_music').locator('svg.lucide-music')).toBeVisible();
   await expect(passengerPage.getByText(/Escolha de músicas foi liberad[oa] pelo motorista\./)).toBeVisible();
   await expect(passengerPage.locator('#passenger-resource-spotify_music')).toBeInViewport();
 
@@ -437,6 +438,50 @@ test('dois dispositivos: motorista libera Spotify e passageiro recebe em tempo r
   ).toBeGreaterThan(0);
 
   await context.close();
+});
+
+test('encerramento remoto tira o passageiro da sessão sem recarregar', async ({ page }) => {
+  let closed = false;
+  const session = {
+    id: 'sess_remote_close', passengerName: 'Junior', browserId: 'browser-e2e',
+    createdAt: new Date().toISOString(), lastActiveAt: new Date().toISOString(),
+    status: 'active', unlockedServices: [], hasMusicUnlocked: false,
+    authUid: 'e2e-anonymous-passenger',
+  };
+  await page.route('**/api/spotify/status', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ configured: true, hasToken: false, isIntegrated: false, userProfile: null }) });
+  });
+  await page.route('**/api/passenger/session/start', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ success: true, session: { ...session, passengerName: JSON.parse(route.request().postData() || '{}').passengerName } }) });
+  });
+  await page.route('**/api/passenger/session/current?**', async (route) => {
+    await route.fulfill({ status: closed ? 410 : 200, contentType: 'application/json',
+      body: JSON.stringify(closed
+        ? { error: 'Sessão encerrada.', session: { ...session, status: 'closed' } }
+        : { success: true, session }) });
+  });
+  await page.route('**/api/driver/passenger-sessions/sess_remote_close/close', async (route) => {
+    closed = true;
+    await route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ success: true, session: { ...session, status: 'closed' } }) });
+  });
+
+  await page.goto('/passageiro?__e2ePassengerFresh=1');
+  await page.getByTestId('passenger-name-input').fill('Junior');
+  await page.getByRole('button', { name: 'Entrar' }).click();
+  await expect(page.getByTestId('spotify-passenger-available')).toBeVisible();
+
+  const result = await page.evaluate(async () => {
+    const response = await fetch('/api/driver/passenger-sessions/sess_remote_close/close', { method: 'POST' });
+    return response.status;
+  });
+  expect(result).toBe(200);
+  await expect(page.getByTestId('passenger-thanks-modal')).toBeVisible({ timeout: 7000 });
+  await page.getByTestId('passenger-thanks-ok').click();
+  await expect(page.getByTestId('passenger-name-input')).toBeVisible();
+  await expect(page.getByTestId('spotify-controller-unlocked')).toHaveCount(0);
 });
 
 

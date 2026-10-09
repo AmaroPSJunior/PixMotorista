@@ -226,6 +226,41 @@ app.get('/api/driver/passenger-sessions', async (req, res) => {
   }
 });
 
+app.post('/api/driver/passenger-sessions/:sessionId/close', async (req, res) => {
+  try {
+    if (!db || !adminAuth) return res.status(503).json({ error: 'Serviço de sessão indisponível.' });
+    const authHeader = req.get('authorization') || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!token) return res.status(401).json({ error: 'Autenticação do motorista ausente.' });
+    const decoded = await adminAuth.verifyIdToken(token);
+    if (decoded.firebase?.sign_in_provider === 'anonymous') {
+      return res.status(403).json({ error: 'Acesso restrito ao motorista autenticado.' });
+    }
+
+    const sessionId = String(req.params.sessionId || '').trim();
+    if (!sessionId) return res.status(400).json({ error: 'Sessão inválida.' });
+    const ref = db.collection('passenger_sessions').doc(sessionId);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ error: 'Sessão do passageiro não encontrada.' });
+    const session = snap.data() || {};
+    if (session.status !== 'active') {
+      return res.status(409).json({ error: 'Esta sessão já foi encerrada ou expirou.' });
+    }
+    const now = new Date();
+    const closedState = {
+      status: 'closed',
+      closedAt: now.toISOString(),
+      reactivationExpiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+      updatedAt: now.toISOString(),
+    };
+    await ref.set(closedState, { merge: true });
+    return res.json({ success: true, session: { id: sessionId, ...session, ...closedState } });
+  } catch (error) {
+    console.error('Erro ao encerrar sessão pelo motorista:', error);
+    return res.status(500).json({ error: 'Não foi possível encerrar a sessão do passageiro.' });
+  }
+});
+
 app.post('/api/driver/passenger-sessions/:sessionId/resources', async (req, res) => {
   try {
     if (!db || !adminAuth) {
@@ -498,6 +533,9 @@ app.get('/api/passenger/session/current', async (req, res) => {
 
     if (requestedSessionId) {
       const requested = await db.collection('passenger_sessions').doc(requestedSessionId).get();
+      if (requested.exists && requested.data()?.authUid === decoded.uid && requested.data()?.status !== 'active') {
+        return res.status(410).json({ error: 'Sessão encerrada ou expirada.', session: { id: requested.id, ...requested.data() } });
+      }
       if (
         requested.exists &&
         requested.data()?.authUid === decoded.uid &&

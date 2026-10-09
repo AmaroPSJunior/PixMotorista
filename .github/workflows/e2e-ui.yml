@@ -46,6 +46,12 @@ jobs:
           if (unauthorized.status !== 401) {
             throw new Error('Passenger close endpoint auth guard failed: ' + unauthorized.status);
           }
+          const driverClose = await fetch(base + '/api/driver/passenger-sessions/integration-probe/close', {
+            method: 'POST',
+          });
+          if (driverClose.status !== 401) {
+            throw new Error('Driver close endpoint auth guard failed: ' + driverClose.status);
+          }
           console.log('Backend/Firebase integration smoke passed.');
           NODE
 

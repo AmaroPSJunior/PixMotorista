@@ -38,7 +38,7 @@ interface ServicesListProps {
 }
 
 // Icon dictionary helper
-const renderServiceIcon = (iconName: string, className: string = 'w-5 h-5') => {
+export const renderServiceIcon = (iconName: string, className: string = 'w-5 h-5') => {
   const name = iconName.toLowerCase();
   switch (name) {
     case 'wifi':
