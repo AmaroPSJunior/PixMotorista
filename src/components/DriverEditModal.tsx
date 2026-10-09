@@ -36,6 +36,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { DriverProfile, AdditionalService } from '../types';
+import { normalizeDriverPixLayout } from '../domain/driverPixLayout';
 import { getPublicPassengerUrl } from '../utils/urlHelper';
 import { fetchMercadoPagoStatus, MercadoPagoStatusResponse } from '../lib/mercadopago';
 
@@ -490,6 +491,46 @@ export const DriverEditModal: React.FC<DriverEditModalProps> = ({
                   </button>
                 </div>
               )}
+
+              <div data-testid="driver-pix-layout-setting" className="rounded-2xl bg-slate-950 p-4 text-white border border-sky-600/40 space-y-2">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-11 h-11 shrink-0 rounded-xl bg-sky-400/20 flex items-center justify-center text-sky-300">
+                      <Car className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 id="driver-pix-layout-label" className="text-sm font-black">Painel PIX automotivo</h3>
+                      <p className="text-xs text-slate-300 mt-1">
+                        {normalizeDriverPixLayout(profileForm.driverPixLayout) === 'automotive'
+                          ? 'Novo layout para a central do carro'
+                          : 'Layout atual do motorista'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-labelledby="driver-pix-layout-label"
+                    aria-checked={normalizeDriverPixLayout(profileForm.driverPixLayout) === 'automotive'}
+                    onClick={() => setProfileForm((previous) => ({
+                      ...previous,
+                      driverPixLayout: normalizeDriverPixLayout(previous.driverPixLayout) === 'automotive'
+                        ? 'legacy'
+                        : 'automotive',
+                    }))}
+                    className={`h-12 w-20 shrink-0 rounded-full p-1.5 flex items-center transition-colors focus-visible:outline focus-visible:outline-4 focus-visible:outline-sky-300 ${
+                      normalizeDriverPixLayout(profileForm.driverPixLayout) === 'automotive' ? 'bg-sky-400' : 'bg-slate-600'
+                    }`}
+                  >
+                    <span className={`h-9 w-9 rounded-full bg-white shadow-md transition-transform ${
+                      normalizeDriverPixLayout(profileForm.driverPixLayout) === 'automotive' ? 'translate-x-8' : ''
+                    }`} />
+                  </button>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  A escolha vale para a visão do motorista. O passageiro continua com a tela atual. Toque em Salvar Alterações para aplicar.
+                </p>
+              </div>
 
               {/* Requirement #1: Email Pix Key */}
               <div className="bg-emerald-50/80 p-3.5 rounded-2xl border border-emerald-200/80 space-y-2">

@@ -3,6 +3,7 @@ import React from 'react';
 interface PassengerAppProps {
   header: React.ReactNode;
   children: React.ReactNode;
+  automotive?: boolean;
 }
 
 export const PassengerApp: React.FC<PassengerAppProps> = ({ header, children }) => (

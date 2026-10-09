@@ -24,6 +24,7 @@ export const DEFAULT_DRIVER_PROFILE: DriverProfile = {
   showSpotifyController: true,
   allowPassengerMusicControl: true,
   spotifyDriverPlaylist: 'Sertanejo Hits',
+  driverPixLayout: 'legacy',
 };
 
 export const DEFAULT_SERVICES: AdditionalService[] = [
