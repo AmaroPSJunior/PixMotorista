@@ -32,8 +32,12 @@ O CI executa `npm install`, `npm test`, `npm run lint` e `npm run build`. O E2E 
 
 ## Encerramento remoto e aviso de recurso
 
-O botão **Encerrar** do motorista chama `POST /api/driver/passenger-sessions/:sessionId/close`, exige autenticação de motorista e grava o estado `closed` no servidor antes de atualizar a lista. Um erro retorna mensagem visível e deixa a sessão ativa. A tela do passageiro recebe a mudança por Firestore ou pela consulta de fallback a cada dois segundos, encerra o acesso e mostra o modal de saída. Ao confirmar, limpa sessão e recursos locais. A consulta de uma sessão encerrada devolve `410` com o status específico, sem substituí-la por outra sessão do mesmo usuário.
+O botão **Encerrar** do motorista chama `POST /api/driver/passenger-sessions/:sessionId/close`, exige autenticação de motorista e grava o estado `closed` no servidor antes de atualizar a lista. Um erro retorna mensagem visível e deixa a sessão ativa. A tela do passageiro recebe a mudança por Firestore ou pela consulta de fallback a cada dois segundos, limpa o acesso local e mostra imediatamente a entrada pelo nome. A consulta de uma sessão encerrada devolve `410` com o status específico, sem substituí-la por outra sessão do mesmo usuário.
 
 O modal de liberação remota busca o serviço na lista e usa o mesmo mapeamento de `iconName` da lista de serviços. Para música, Wi-Fi e carregador, há ícones padrão quando o cadastro ainda não carregou. Se mais de um recurso for liberado, exibe os ícones de cada um.
 
-O teste E2E `encerramento remoto tira o passageiro da sessão sem recarregar` cobre a atualização do outro dispositivo, o modal e a volta ao cadastro. O teste de dois dispositivos também verifica a nota musical do Spotify no modal. A rota de encerramento exige credenciais reais nos ambientes integrados; os testes de interface interceptam a API e não encerram sessões reais.
+O teste E2E `encerramento remoto tira o passageiro da sessão sem recarregar` cobre a atualização do outro dispositivo e a volta ao cadastro. O teste de dois dispositivos também verifica a nota musical do Spotify no modal de liberação. A rota de encerramento exige credenciais reais nos ambientes integrados; os testes de interface interceptam a API e não encerram sessões reais.
+
+### Proteção da tela após o encerramento
+
+Quando o passageiro sai ou o motorista encerra sua sessão, a aplicação limpa o acesso local e mostra diretamente a tela de entrada pelo nome. O QR Pix, o Wi-Fi, a música, os serviços e os botões de pagamento deixam de ser montados até existir uma sessão ativa associada ao nome informado. Durante a restauração da autenticação e da sessão, a tela exibe somente um estado de carregamento. O teste E2E verifica que essas seções não existem após ambos os modos de encerramento e que voltam após a identificação.

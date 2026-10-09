@@ -116,17 +116,13 @@ test('passageiro encerra sessão e volta para cadastro de novo nome', async ({ p
   await expect(exitButton).toBeVisible();
   await exitButton.click();
 
-  const thanksModal = page.getByTestId('passenger-thanks-modal');
-  await expect(thanksModal).toBeVisible();
-  await expect(page.getByText('Obrigado!')).toBeVisible();
-
-  await page.getByTestId('passenger-thanks-ok').click();
-
-  await expect(thanksModal).toBeHidden();
   await expect(page.getByTestId('passenger-name-modal')).toBeVisible();
   await expect(page.getByText('Como podemos te chamar?')).toBeVisible();
   await expect(page.getByTestId('passenger-name-input')).toBeVisible();
   await expect(page.getByTestId('passenger-exit-button')).toHaveCount(0);
+  await expect(page.locator('#pix-section-wrapper')).toHaveCount(0);
+  await expect(page.locator('#passenger-resource-wifi')).toHaveCount(0);
+  await expect(page.getByTestId('spotify-unlock-button')).toHaveCount(0);
 
   const stored = await page.evaluate(() => ({
     sessionId: localStorage.getItem('pix_registered_session_id'),
@@ -182,6 +178,8 @@ test('primeiro acesso do passageiro fica bloqueado até informar o nome', async 
   await expect(page.getByText('Como podemos te chamar?')).toBeVisible();
   await expect(page.getByTestId('passenger-name-input')).toBeVisible();
   await expect(page.getByTestId('passenger-exit-button')).toHaveCount(0);
+  await expect(page.locator('#pix-section-wrapper')).toHaveCount(0);
+  await expect(page.locator('#passenger-resource-wifi')).toHaveCount(0);
 
   await page.getByTestId('passenger-name-input').fill('Junior');
   await page.getByRole('button', { name: 'Entrar' }).click();
@@ -189,6 +187,7 @@ test('primeiro acesso do passageiro fica bloqueado até informar o nome', async 
   await expect(gate).toBeHidden();
   await expect(page.getByText('Junior')).toBeVisible();
   await expect(page.getByTestId('passenger-exit-button')).toBeVisible();
+  await expect(page.locator('#pix-section-wrapper')).toBeVisible();
 });
 
 
@@ -478,9 +477,10 @@ test('encerramento remoto tira o passageiro da sessão sem recarregar', async ({
     return response.status;
   });
   expect(result).toBe(200);
-  await expect(page.getByTestId('passenger-thanks-modal')).toBeVisible({ timeout: 7000 });
-  await page.getByTestId('passenger-thanks-ok').click();
-  await expect(page.getByTestId('passenger-name-input')).toBeVisible();
+  await expect(page.getByTestId('passenger-name-input')).toBeVisible({ timeout: 7000 });
+  await expect(page.locator('#pix-section-wrapper')).toHaveCount(0);
+  await expect(page.locator('#passenger-resource-wifi')).toHaveCount(0);
+  await expect(page.getByTestId('passenger-exit-button')).toHaveCount(0);
   await expect(page.getByTestId('spotify-controller-unlocked')).toHaveCount(0);
 });
 
