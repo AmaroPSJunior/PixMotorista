@@ -40,6 +40,10 @@ Uma revogação no painel do motorista atualiza a mesma sessão no servidor. Na 
 
 O teste E2E `encerramento remoto tira o passageiro da sessão sem recarregar` cobre a atualização do outro dispositivo e a volta ao cadastro. O teste de dois dispositivos também verifica a nota musical do Spotify no modal de liberação. A rota de encerramento exige credenciais reais nos ambientes integrados; os testes de interface interceptam a API e não encerram sessões reais.
 
+### Passageiro visível no painel do motorista
+
+As abas **Sessões** e **Histórico por Dispositivo** exibem um único registro: a sessão ativa com atividade mais recente. Quando não existe sessão ativa, exibem a sessão encerrada ou expirada mais recente. Sessões sem nome real não aparecem. O botão para abrir todo o histórico foi removido dessa tela; os registros continuam salvos no servidor e o controle de múltiplos passageiros continua disponível. `tests/visible-driver-session.test.ts` cobre a prioridade da sessão ativa, a escolha do último encerramento e a ausência de passageiro identificado.
+
 ### Proteção da tela após o encerramento
 
 Quando o passageiro sai ou o motorista encerra sua sessão, a aplicação limpa o acesso local e mostra diretamente a tela de entrada pelo nome. O QR Pix, o Wi-Fi, a música, os serviços e os botões de pagamento deixam de ser montados até existir uma sessão ativa associada ao nome informado. O formulário aparece mesmo enquanto a autenticação anônima ou a assinatura Firestore ainda está pendente; o envio do nome aguarda a autenticação e informa erros no próprio formulário. Uma resposta válida do endpoint de início libera a sessão, inclusive quando a assinatura Firestore não respondeu. O E2E verifica o formulário sem resposta da assinatura, a ausência de seções protegidas após os dois modos de encerramento e o retorno delas após a identificação.

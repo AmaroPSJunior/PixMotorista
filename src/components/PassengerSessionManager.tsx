@@ -30,6 +30,7 @@ import {
   saveSessionSettings,
 } from '../lib/firebase';
 import { normalizeServiceId, normalizeServiceIds, SERVICE_IDS } from '../domain/serviceIds';
+import { visibleDriverSession } from '../domain/visibleDriverSession';
 import { getCurrentIdToken } from '../lib/auth';
 
 interface PassengerSessionManagerProps {
@@ -63,7 +64,6 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
   const [passengerNameInput, setPassengerNameInput] = useState('');
   const [isEditingName, setIsEditingName] = useState(false);
   const [activeDriverTab, setActiveDriverTab] = useState<'sessions' | 'devices'>('sessions');
-  const [showFullHistory, setShowFullHistory] = useState(false);
   const [identifyError, setIdentifyError] = useState('');
   const [isIdentifyingPassenger, setIsIdentifyingPassenger] = useState(false);
   const [closingSessionId, setClosingSessionId] = useState<string | null>(null);
@@ -393,27 +393,15 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
       });
   })();
 
-  // Temporary test mode: every driver can see every passenger session.
-  // Later this will be scoped by the QR-code relationship between driver and ride.
-  const driverSessions = sessions.filter(
-    (session) =>
-      Boolean(session.passengerName?.trim()) &&
-      session.passengerName.trim().toLowerCase() !== 'passageiro'
-  );
+  // Both driver tabs show the same single passenger: the latest active session,
+  // or the last active passenger's most recently ended session.
+  const selectedDriverSession = visibleDriverSession(sessions);
+  const driverSessions = selectedDriverSession ? [selectedDriverSession] : [];
 
   const activeSessions = driverSessions.filter((s) => s.status === 'active');
   const expiredSessions = driverSessions.filter((s) => s.status === 'expired' || s.status === 'closed');
 
-  // Active + Expired + Closed sessions stay visible by default in driver view (Active first, Expired/Closed below)
-  const activeAndExpiredSessions = [...driverSessions]
-    .filter((s) => s.status === 'active' || s.status === 'expired' || s.status === 'closed')
-    .sort((a, b) => {
-      if (a.status === 'active' && b.status !== 'active') return -1;
-      if (a.status !== 'active' && b.status === 'active') return 1;
-      const timeA = new Date(a.lastActiveAt || a.createdAt).getTime();
-      const timeB = new Date(b.lastActiveAt || b.createdAt).getTime();
-      return timeB - timeA;
-    });
+  const activeAndExpiredSessions = driverSessions;
 
   // PASSENGER VIEW: the whole passenger experience remains locked until a real name exists.
   if (viewMode === 'passenger') {
@@ -494,7 +482,7 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
 
         <div className="flex items-center gap-2">
           <span className="text-xs font-extrabold px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-300">
-            {activeSessions.length} Ativo(s) {expiredSessions.length > 0 && `• ${expiredSessions.length} Expirado(s)`}
+            {activeSessions.length > 0 ? '1 passageiro ativo' : expiredSessions.length > 0 ? 'Último passageiro' : 'Nenhum passageiro'}
           </span>
         </div>
       </div>
@@ -613,34 +601,19 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
         /* Sessions List */
         <div className="space-y-3">
           {(() => {
-            const displayedSessions = showFullHistory ? driverSessions : activeAndExpiredSessions;
+            const displayedSessions = activeAndExpiredSessions;
 
             return (
               <>
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                    <span>{showFullHistory ? 'Histórico Completo de Sessões' : 'Sessões Ativas & Expiradas'} ({displayedSessions.length})</span>
-                    {showFullHistory && (
-                      <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full font-bold">
-                        Total ({driverSessions.length})
-                      </span>
-                    )}
+                    <span>{activeSessions.length > 0 ? 'Passageiro ativo' : 'Último passageiro ativo'} ({displayedSessions.length})</span>
                   </h4>
 
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] text-slate-400">
                       Expirar em {settings.autoExpireMinutes} min
                     </span>
-                    {driverSessions.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setShowFullHistory(!showFullHistory)}
-                        className="text-xs font-bold text-sky-400 hover:text-sky-300 bg-sky-950/60 border border-sky-800/80 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
-                      >
-                        <Clock className="w-3.5 h-3.5" />
-                        <span>{showFullHistory ? 'Mostrar Ativos e Expirados' : `Ver Histórico Completo (${driverSessions.length})`}</span>
-                      </button>
-                    )}
                   </div>
                 </div>
 
@@ -648,23 +621,11 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
                   <div className="bg-slate-950/50 rounded-2xl p-6 text-center border border-slate-800 text-slate-400 space-y-3">
                     <Users className="w-8 h-8 text-slate-600 mx-auto" />
                     <p className="text-xs font-bold text-slate-300">
-                      {showFullHistory ? 'Nenhuma sessão de passageiro registrada' : 'Nenhuma sessão ativa no momento'}
+                      Nenhum passageiro registrado
                     </p>
                     <p className="text-[11px] text-slate-400">
-                      {showFullHistory
-                        ? 'Quando um passageiro abrir o aplicativo no celular e informar o nome, a sessão aparecerá aqui.'
-                        : 'Quando um passageiro acessar o app, a sessão ativa será exibida nesta tela.'}
+                      Quando um passageiro informar o nome, ele aparecerá aqui.
                     </p>
-                    {!showFullHistory && sessions.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setShowFullHistory(true)}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-extrabold transition-all shadow-md cursor-pointer active:scale-95"
-                      >
-                        <Clock className="w-3.5 h-3.5" />
-                        <span>Acessar Histórico Completo ({sessions.length} registradas)</span>
-                      </button>
-                    )}
                   </div>
                 ) : (
                   <div className="space-y-2.5">
@@ -948,18 +909,6 @@ export const PassengerSessionManager: React.FC<PassengerSessionManagerProps> = (
                       );
                     })}
 
-                    {!showFullHistory && driverSessions.length > activeAndExpiredSessions.length && (
-                      <div className="pt-2 text-center">
-                        <button
-                          type="button"
-                          onClick={() => setShowFullHistory(true)}
-                          className="text-xs font-bold text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 px-4 py-2.5 rounded-xl transition-all inline-flex items-center gap-2 cursor-pointer shadow-xs active:scale-95"
-                        >
-                          <Clock className="w-3.5 h-3.5 text-sky-400" />
-                          <span>Acessar Histórico Completo ({driverSessions.length - activeAndExpiredSessions.length} sessões encerradas)</span>
-                        </button>
-                      </div>
-                    )}
                   </div>
                 )}
               </>
