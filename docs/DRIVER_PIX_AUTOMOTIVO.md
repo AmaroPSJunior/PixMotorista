@@ -36,6 +36,8 @@ O botão **Encerrar** do motorista chama `POST /api/driver/passenger-sessions/:s
 
 O modal de liberação remota busca o serviço na lista e usa o mesmo mapeamento de `iconName` da lista de serviços. Para música, Wi-Fi e carregador, há ícones padrão quando o cadastro ainda não carregou. Se mais de um recurso for liberado, exibe os ícones de cada um.
 
+Uma revogação no painel do motorista atualiza a mesma sessão no servidor. Na tela do passageiro, a lista de recursos dessa sessão prevalece sobre indicadores locais antigos e sobre a configuração global padrão: a música volta ao estado bloqueado, o Wi-Fi deixa de mostrar o QR e o serviço volta a pedir liberação. O evento de sincronização remove a liberação local e o aviso pendente do recurso revogado. O E2E de dois dispositivos verifica liberação e revogação do Spotify sem recarregar; o teste de domínio cobre as diferenças de identificadores canônicos e antigos.
+
 O teste E2E `encerramento remoto tira o passageiro da sessão sem recarregar` cobre a atualização do outro dispositivo e a volta ao cadastro. O teste de dois dispositivos também verifica a nota musical do Spotify no modal de liberação. A rota de encerramento exige credenciais reais nos ambientes integrados; os testes de interface interceptam a API e não encerram sessões reais.
 
 ### Proteção da tela após o encerramento
