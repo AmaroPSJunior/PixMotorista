@@ -123,6 +123,7 @@ export default function App() {
   const [passengerAuthUid, setPassengerAuthUid] = useState<string | null>(null);
   const [passengerAuthResolved, setPassengerAuthResolved] = useState<boolean>(false);
   const [passengerSessionsResolved, setPassengerSessionsResolved] = useState<boolean>(false);
+  const [sessionValidatedByApiId, setSessionValidatedByApiId] = useState<string | null>(null);
   const driverEmailFromUrl = getDriverEmailFromUrl();
 
   const [viewMode, setViewMode] = useState<'driver' | 'passenger'>(() => getExperienceFromUrl());
@@ -471,6 +472,7 @@ export default function App() {
     clearPassengerSessionCache();
     lastActivePassengerSessionRef.current = null;
     setForceNewPassengerSession(true);
+    setSessionValidatedByApiId(null);
     setActiveSessionId(null);
     setResourceUnlockNotice([]);
     setLocalUnlockedServices([]);
@@ -542,7 +544,10 @@ export default function App() {
       return [session, ...withoutCurrent];
     });
     setActiveSessionId(session.id);
+    setSessionValidatedByApiId(session.id);
     writePassengerSessionCache(session);
+    setPassengerAuthResolved(true);
+    setPassengerSessionsResolved(true);
 
     try {
       localStorage.setItem('pix_registered_session_id', session.id);
@@ -575,6 +580,7 @@ export default function App() {
     viewMode !== 'passenger' ||
     isFreshPassengerE2E ||
     isPassengerExitE2E ||
+    (Boolean(currentPassengerSession?.id) && sessionValidatedByApiId === currentPassengerSession?.id) ||
     (passengerAuthResolved && passengerSessionsResolved);
 
   useEffect(() => {
@@ -1193,22 +1199,16 @@ export default function App() {
   if (viewMode === 'passenger' && (!passengerEntryResolved || !passengerHasNamedActiveSession)) {
     return (
       <PassengerApp header={null}>
-        {passengerEntryResolved ? (
-          <PassengerSessionManager
-            viewMode="passenger"
-            sessions={passengerSessions}
-            settings={sessionSettings}
-            services={services}
-            activeSessionId={activeSessionId}
-            onSetActiveSessionId={setActiveSessionId}
-            requirePassengerIdentification
-            onIdentifyPassenger={handlePassengerIdentify}
-          />
-        ) : (
-          <div data-testid="passenger-entry-loading" className="fixed inset-0 bg-slate-950 flex items-center justify-center text-white font-bold" role="status">
-            Preparando acesso do passageiro...
-          </div>
-        )}
+        <PassengerSessionManager
+          viewMode="passenger"
+          sessions={passengerSessions}
+          settings={sessionSettings}
+          services={services}
+          activeSessionId={activeSessionId}
+          onSetActiveSessionId={setActiveSessionId}
+          requirePassengerIdentification
+          onIdentifyPassenger={handlePassengerIdentify}
+        />
       </PassengerApp>
     );
   }

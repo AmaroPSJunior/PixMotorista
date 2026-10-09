@@ -190,6 +190,14 @@ test('primeiro acesso do passageiro fica bloqueado até informar o nome', async 
   await expect(page.locator('#pix-section-wrapper')).toBeVisible();
 });
 
+test('entrada pelo nome aparece sem aguardar resposta da assinatura de sessões', async ({ page }) => {
+  await page.goto('/passageiro');
+  await expect(page.getByTestId('passenger-name-modal')).toBeVisible();
+  await expect(page.getByTestId('passenger-entry-loading')).toHaveCount(0);
+  await expect(page.locator('#pix-section-wrapper')).toHaveCount(0);
+  await expect(page.locator('#passenger-resource-wifi')).toHaveCount(0);
+});
+
 
 test('motorista libera recurso sem recarregar ou mover a tela', async ({ page }) => {
   await page.goto('/passageiro');
