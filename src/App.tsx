@@ -903,7 +903,9 @@ export default function App() {
   // Save updated services catalog to Firestore
   const handleSaveServices = (updatedServices: AdditionalService[]) => {
     setServices(updatedServices);
-    saveAllServices(updatedServices);
+    void saveAllServices(updatedServices).catch(() => {
+      alert('Não foi possível salvar os serviços no banco. Recarregue a página e tente novamente.');
+    });
   };
 
   const effectivePurchasedProducts = currentPassengerSession?.purchasedProducts || localPurchasedProducts;
@@ -1067,7 +1069,9 @@ export default function App() {
   const handleResetDefaults = () => {
     if (confirm('Deseja restaurar as configurações padrão iniciais no banco de dados Firestore?')) {
       saveDriverProfile(DEFAULT_DRIVER_PROFILE);
-      saveAllServices(DEFAULT_SERVICES);
+      void saveAllServices(DEFAULT_SERVICES).catch(() => {
+        alert('Não foi possível restaurar os serviços no banco. Recarregue a página e tente novamente.');
+      });
       setSelectedServiceIds([]);
       setSelectedTip(0);
     }

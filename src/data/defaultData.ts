@@ -62,27 +62,4 @@ export const DEFAULT_SERVICES: AdditionalService[] = [
     category: 'cortesia',
     isActive: true,
   },
-  // Categoria: PRODUTOS (Consumíveis)
-  {
-    id: 'water_bottle',
-    title: 'Água Mineral Gelada 500ml',
-    description: 'Garrafa de água mineral bem gelada.',
-    price: 3.0,
-    iconName: 'ShoppingBag',
-    isPopular: true,
-    itemType: 'produto',
-    category: 'conveniencia',
-    isActive: true,
-  },
-  {
-    id: 'snack_pack',
-    title: 'Snacks / Salgadinhos',
-    description: 'Pacote de salgadinhos crocantes para saborear a bordo.',
-    price: 4.5,
-    iconName: 'Coffee',
-    isPopular: false,
-    itemType: 'produto',
-    category: 'conveniencia',
-    isActive: true,
-  },
 ];
