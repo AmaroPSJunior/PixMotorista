@@ -41,3 +41,8 @@ export function getNewlyUnlockedServiceIds(
   const previousSet = new Set(normalizeServiceIds(previous));
   return normalizeServiceIds(current).filter((id) => !previousSet.has(id));
 }
+
+export function getNewlyLockedServiceIds(previous: string[] = [], current: string[] = []): string[] {
+  const currentSet = new Set(normalizeServiceIds(current));
+  return normalizeServiceIds(previous).filter((id) => !currentSet.has(id));
+}

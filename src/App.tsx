@@ -41,7 +41,7 @@ import { AuthenticatedDriver, ensurePassengerAuth, getCurrentIdToken, signOutDri
 import { DriverApp } from './views/DriverApp';
 import { PassengerApp } from './views/PassengerApp';
 import { useRideSession } from './state/useRideSession';
-import { getNewlyUnlockedServiceIds, normalizeServiceId, normalizeServiceIds, SERVICE_IDS } from './domain/serviceIds';
+import { getNewlyLockedServiceIds, getNewlyUnlockedServiceIds, normalizeServiceId, normalizeServiceIds, SERVICE_IDS } from './domain/serviceIds';
 import { isPassengerCloseTerminalStatus } from './domain/businessRules';
 import { normalizeDriverPixLayout } from './domain/driverPixLayout';
 import { clearPassengerSessionCache, readPassengerSessionCache, writePassengerSessionCache } from './utils/passengerSessionCache';
@@ -801,8 +801,8 @@ export default function App() {
     isDevEnv,
   ]);
 
-  // When a driver unlocks a new service on another device, the passenger UI
-  // updates immediately and plays the same confirmation chime as a payment.
+  // Apply both grants and revocations from the same session snapshot. Local
+  // payment/cache hints must never keep a revoked resource available.
   useEffect(() => {
     if (viewMode !== 'passenger' || !currentPassengerSession) {
       previousRemoteUnlocksRef.current = null;
@@ -824,10 +824,21 @@ export default function App() {
     }
 
     const newlyUnlocked = getNewlyUnlockedServiceIds(previous.ids, currentIds);
+    const newlyLocked = getNewlyLockedServiceIds(previous.ids, currentIds);
     previousRemoteUnlocksRef.current = {
       sessionId: currentPassengerSession.id,
       ids: currentIds,
     };
+
+    if (newlyLocked.length > 0) {
+      const revoked = new Set(newlyLocked);
+      setLocalUnlockedServices((ids) => ids.filter((id) => !revoked.has(normalizeServiceId(id))));
+      setResourceUnlockNotice((ids) => ids.filter((id) => !revoked.has(id)));
+      if (revoked.has(SERVICE_IDS.MUSIC)) {
+        setIsMusicUnlocked(false);
+        try { localStorage.removeItem('pix_music_unlocked'); } catch {}
+      }
+    }
 
     if (newlyUnlocked.length === 0) return;
 
@@ -855,23 +866,21 @@ export default function App() {
     viewMode,
     currentPassengerSession?.id,
     currentPassengerSession?.unlockedServices,
+    currentPassengerSession?.hasMusicUnlocked,
   ]);
 
-  // Active passenger session unlocked services list from Firestore (authoritative)
-  // Combine session-specific unlocks with global default unlocked services from sessionSettings
+  // Once a passenger session exists, its service list controls access. Global
+  // defaults apply when creating sessions, not after a driver revokes a service.
   const defaultUnlocked = sessionSettings.defaultUnlockedServices || [];
   const currentSessionUnlocked = currentPassengerSession
-    ? Array.from(new Set([...defaultUnlocked, ...currentPassengerSession.unlockedServices]))
+    ? currentPassengerSession.unlockedServices
     : Array.from(new Set(defaultUnlocked));
 
   const allUnlockedServicesList = normalizeServiceIds(currentSessionUnlocked);
 
-  const passengerHasMusicUnlocked = Boolean(
-    localUnlockedServices.includes(SERVICE_IDS.MUSIC) ||
-      (currentPassengerSession &&
-        (currentPassengerSession.unlockedServices.includes(SERVICE_IDS.MUSIC) ||
-          currentPassengerSession.hasMusicUnlocked))
-  );
+  const passengerHasMusicUnlocked = Boolean(currentPassengerSession &&
+    (normalizeServiceIds(currentPassengerSession.unlockedServices).includes(SERVICE_IDS.MUSIC) ||
+      currentPassengerSession.hasMusicUnlocked));
 
   const effectiveMusicUnlocked =
     viewMode === 'driver' ? true : passengerHasMusicUnlocked;

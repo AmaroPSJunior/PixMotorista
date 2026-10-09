@@ -322,6 +322,7 @@ test('liberação remota do motorista chega ao passageiro sem reload e toca som'
 test('dois dispositivos: motorista libera Spotify e passageiro recebe em tempo real com som', async ({ browser }) => {
   const context = await browser.newContext();
   let unlocked = false;
+  let revision = 0;
 
   await context.route('**/api/spotify/status', async (route) => {
     await route.fulfill({
@@ -371,8 +372,8 @@ test('dois dispositivos: motorista libera Spotify e passageiro recebe em tempo r
           unlockedServices: unlocked ? ['spotify_music'] : [],
           hasMusicUnlocked: unlocked,
           authUid: 'e2e-anonymous-passenger',
-          resourceRevision: unlocked ? 2 : 0,
-          lastResourceChangeAt: unlocked ? new Date().toISOString() : undefined,
+          resourceRevision: revision,
+          lastResourceChangeAt: revision ? new Date().toISOString() : undefined,
         },
       }),
     });
@@ -381,8 +382,9 @@ test('dois dispositivos: motorista libera Spotify e passageiro recebe em tempo r
   await context.route('**/api/driver/passenger-sessions/sess_two_devices/resources', async (route) => {
     const body = JSON.parse(route.request().postData() || '{}');
     expect(body.serviceId).toBe('spotify_music');
-    expect(body.unlock).toBe(true);
-    unlocked = true;
+    expect(typeof body.unlock).toBe('boolean');
+    unlocked = body.unlock;
+    revision += 1;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -393,9 +395,9 @@ test('dois dispositivos: motorista libera Spotify e passageiro recebe em tempo r
           id: 'sess_two_devices',
           passengerName: 'Junior',
           status: 'active',
-          unlockedServices: ['spotify_music'],
-          hasMusicUnlocked: true,
-          resourceRevision: 2,
+          unlockedServices: unlocked ? ['spotify_music'] : [],
+          hasMusicUnlocked: unlocked,
+          resourceRevision: revision,
         },
       }),
     });
@@ -443,6 +445,21 @@ test('dois dispositivos: motorista libera Spotify e passageiro recebe em tempo r
     async () => passengerPage.evaluate(() => (window as any).__unlockSoundCount || 0),
     { timeout: 7000 }
   ).toBeGreaterThan(0);
+
+  await passengerPage.getByTestId('resource-unlock-modal-ok').click();
+  const revokeResponse = await driverPage.evaluate(async () => {
+    const response = await fetch('/api/driver/passenger-sessions/sess_two_devices/resources', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer driver-e2e' },
+      body: JSON.stringify({ serviceId: 'spotify_music', unlock: false }),
+    });
+    return { status: response.status, payload: await response.json() };
+  });
+  expect(revokeResponse.status).toBe(200);
+  expect(revokeResponse.payload.session.unlockedServices).not.toContain('spotify_music');
+  await expect(passengerPage.getByTestId('spotify-unlock-button')).toBeVisible({ timeout: 7000 });
+  await expect(passengerPage.getByTestId('spotify-controller-unlocked')).toHaveCount(0);
+  await expect.poll(async () => passengerPage.evaluate(() => localStorage.getItem('pix_music_unlocked'))).toBeNull();
 
   await context.close();
 });
