@@ -1412,7 +1412,7 @@ export default function App() {
         </footer>
       </main>
       {showPassengerThanksModal && viewMode === 'passenger' && (
-        <div data-testid="passenger-thanks-modal" className="fixed inset-0 z-[200] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div data-testid="passenger-thanks-modal" className="fixed inset-0 z-[300] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-sm rounded-3xl bg-white border border-slate-200 shadow-2xl p-6 text-center">
             <div className="w-14 h-14 mx-auto rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mb-4">
               <span className="text-2xl">✓</span>
