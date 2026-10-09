@@ -250,7 +250,7 @@ export function subscribeServices(onUpdate: (services: AdditionalService[]) => v
             isPopular: data.isPopular !== undefined ? Boolean(data.isPopular) : false,
           });
         });
-        const defaultOrder = ['wifi', 'spotify_music', 'charger', 'agua', 'snacks'];
+        const defaultOrder = ['wifi', 'spotify_music', 'charger'];
         servicesList.sort((a, b) => {
           const indexA = defaultOrder.indexOf(a.id);
           const indexB = defaultOrder.indexOf(b.id);
@@ -271,8 +271,16 @@ export function subscribeServices(onUpdate: (services: AdditionalService[]) => v
   );
 }
 
+// Serialize catalog writes so an earlier edit cannot restore a product after deletion.
+let pendingServicesSave: Promise<void> = Promise.resolve();
+
 // Save all services to Firestore and sync deletions
-export async function saveAllServices(services: AdditionalService[]) {
+export function saveAllServices(services: AdditionalService[]): Promise<void> {
+  pendingServicesSave = pendingServicesSave.catch(() => {}).then(() => persistAllServices(services));
+  return pendingServicesSave;
+}
+
+async function persistAllServices(services: AdditionalService[]) {
   try {
     const colRef = collection(db, 'services');
     const snapshot = await getDocs(colRef);
@@ -308,6 +316,7 @@ export async function saveAllServices(services: AdditionalService[]) {
     await batch.commit();
   } catch (error) {
     console.error('Error saving services to Firestore:', error);
+    throw error;
   }
 }
 

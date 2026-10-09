@@ -44,6 +44,10 @@ O teste E2E `encerramento remoto tira o passageiro da sessão sem recarregar` co
 
 As abas **Sessões** e **Histórico por Dispositivo** exibem um único registro: a sessão ativa com atividade mais recente. Quando não existe sessão ativa, exibem a sessão encerrada ou expirada mais recente. Sessões sem nome real não aparecem. O botão para abrir todo o histórico foi removido dessa tela; os registros continuam salvos no servidor e o controle de múltiplos passageiros continua disponível. `tests/visible-driver-session.test.ts` cobre a prioridade da sessão ativa, a escolha do último encerramento e a ausência de passageiro identificado.
 
+### Catálogo inicial de serviços
+
+O catálogo inicial e a ação **Restaurar padrões** contêm apenas Wi-Fi, música e carregador. Água e salgadinhos não são mais criados pelo código. Produtos adicionais são documentos da coleção Firestore `services`, cadastrados pelo motorista; produtos já existentes no banco permanecem até serem excluídos no editor ou pela ação de restaurar padrões. As gravações do catálogo são sequenciais para uma edição anterior não restaurar um item apagado, e falhas de gravação são exibidas ao motorista. `tests/default-services.test.ts` verifica os três padrões.
+
 ### Proteção da tela após o encerramento
 
 Quando o passageiro sai ou o motorista encerra sua sessão, a aplicação limpa o acesso local e mostra diretamente a tela de entrada pelo nome. O QR Pix, o Wi-Fi, a música, os serviços e os botões de pagamento deixam de ser montados até existir uma sessão ativa associada ao nome informado. O formulário aparece mesmo enquanto a autenticação anônima ou a assinatura Firestore ainda está pendente; o envio do nome aguarda a autenticação e informa erros no próprio formulário. Uma resposta válida do endpoint de início libera a sessão, inclusive quando a assinatura Firestore não respondeu. O E2E verifica o formulário sem resposta da assinatura, a ausência de seções protegidas após os dois modos de encerramento e o retorno delas após a identificação.
