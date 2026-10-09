@@ -1,6 +1,23 @@
 import { expect, test } from '@playwright/test';
 
 test('passageiro paga/simula e Spotify é liberado imediatamente', async ({ page }) => {
+  await page.route('**/api/passenger/session/start', async (route) => {
+    const payload = JSON.parse(route.request().postData() || '{}');
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        session: {
+          id: 'sess_payment_e2e', passengerName: payload.passengerName,
+          browserId: payload.browserId, createdAt: new Date().toISOString(),
+          lastActiveAt: new Date().toISOString(), status: 'active',
+          unlockedServices: [], hasMusicUnlocked: false,
+          authUid: 'e2e-anonymous-passenger', resourceRevision: 0,
+        },
+      }),
+    });
+  });
   await page.route('**/api/spotify/status', async (route) => {
     await route.fulfill({
       status: 200,
@@ -81,7 +98,9 @@ test('passageiro paga/simula e Spotify é liberado imediatamente', async ({ page
     });
   });
 
-  await page.goto('/passageiro?__e2ePassengerExit=1');
+  await page.goto('/passageiro?__e2ePassengerFresh=1');
+  await page.getByTestId('passenger-name-input').fill('Junior');
+  await page.getByRole('button', { name: 'Entrar' }).click();
 
   const unlockButton = page.getByTestId('spotify-unlock-button');
   await expect(unlockButton).toBeVisible();
